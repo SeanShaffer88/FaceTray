@@ -1,0 +1,23 @@
+<Window x:Class="FaceTray.LoginWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        Title="Sign in to Facebook — FaceTray"
+        Width="980" Height="720" MinWidth="640" MinHeight="480"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource BgBrush}"
+        Icon="facetray.ico">
+    <DockPanel>
+        <Border DockPanel.Dock="Top" Background="{StaticResource SurfaceBrush}" Padding="14,10">
+            <StackPanel>
+                <TextBlock Text="Sign in to Facebook" FontSize="16" FontWeight="SemiBold"
+                           Foreground="{StaticResource TextBrush}"/>
+                <TextBlock Margin="0,4,0,0" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}"
+                           Text="Sign in here once — FaceTray keeps the session in its own profile on this PC, so you stay signed in. FaceTray never sees or stores your password. When you're done, close this window and FaceTray will refresh."/>
+                <TextBlock x:Name="StatusText" Margin="0,6,0,0" TextWrapping="Wrap"
+                           Foreground="{StaticResource MutedBrush}"/>
+            </StackPanel>
+        </Border>
+        <wv2:WebView2 x:Name="Browser"/>
+    </DockPanel>
+</Window>

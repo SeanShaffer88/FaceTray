@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>FaceTray</AssemblyName>
+    <RootNamespace>FaceTray</RootNamespace>
+    <Version>0.1.0</Version>
+    <!-- Ship only English satellite assemblies: the shell UI is English-only,
+         and the self-contained runtime otherwise adds a folder per culture. -->
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <Authors>Sean Shaffer</Authors>
+    <Description>Facebook notifications in the Windows tray, with a live unread counter.</Description>
+    <ApplicationIcon>facetray.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Allow building the Windows target on non-Windows machines for CI gates. -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4258.31" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FaceTray.Core\FaceTray.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The window icon is loaded at runtime from a pack resource. It must
+         be a WPF Resource: ApplicationIcon alone only embeds the Win32 exe
+         icon, and referencing the file from XAML without this crashes
+         startup with a XamlParseException (MuseDesktop v0.1.0 field bug). -->
+    <Resource Include="facetray.ico" />
+  </ItemGroup>
+
+</Project>

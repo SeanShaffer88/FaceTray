@@ -1,0 +1,108 @@
+<Window x:Class="FaceTray.TickerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="FaceTray — Notifications"
+        Width="380" MaxHeight="660" SizeToContent="Height"
+        WindowStyle="None" ResizeMode="NoResize" ShowInTaskbar="False"
+        ShowActivated="True" Topmost="True"
+        AllowsTransparency="True" Background="Transparent"
+        AutomationProperties.Name="Facebook notifications ticker">
+    <!-- Facebook's own menu look (SEAN, 2026-10-23): this palette deliberately
+         replaces the black/red family look inside the ticker only. In Windows
+         high-contrast mode these hard-coded colours still apply in v0.1 —
+         recorded in KNOWN_LIMITATIONS.md. -->
+    <Border Background="#242526" CornerRadius="8" BorderBrush="#3A3B3C" BorderThickness="1" Padding="8,10,8,10">
+        <Border.Effect>
+            <DropShadowEffect BlurRadius="16" ShadowDepth="2" Opacity="0.45" Color="Black"/>
+        </Border.Effect>
+        <DockPanel>
+            <!-- Header -->
+            <Grid DockPanel.Dock="Top" Margin="4,0,0,2">
+                <TextBlock Text="Notifications" FontSize="24" FontWeight="Bold" Foreground="#E4E6EB"
+                           VerticalAlignment="Center"/>
+                <Button x:Name="MenuButton" HorizontalAlignment="Right" Width="36" Height="36"
+                        Background="#3A3B3C" Foreground="#E4E6EB" BorderThickness="0" Cursor="Hand"
+                        FontSize="16" Content="···" AutomationProperties.Name="FaceTray menu"
+                        Click="OnMenuButton">
+                    <Button.Template>
+                        <ControlTemplate TargetType="Button">
+                            <Border Background="{TemplateBinding Background}" CornerRadius="18">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                        </ControlTemplate>
+                    </Button.Template>
+                </Button>
+            </Grid>
+
+            <!-- Filter pills -->
+            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="4,4,0,6">
+                <Button x:Name="AllPill" Padding="12,4" Margin="0,0,6,0" Cursor="Hand"
+                        Content="All" AutomationProperties.Name="Show all notifications" Click="OnAllPill">
+                    <Button.Template>
+                        <ControlTemplate TargetType="Button">
+                            <Border Background="{TemplateBinding Background}" CornerRadius="14">
+                                <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                        </ControlTemplate>
+                    </Button.Template>
+                </Button>
+                <Button x:Name="UnreadPill" Padding="12,4" Cursor="Hand"
+                        Content="Unread" AutomationProperties.Name="Show unread notifications only" Click="OnUnreadPill">
+                    <Button.Template>
+                        <ControlTemplate TargetType="Button">
+                            <Border Background="{TemplateBinding Background}" CornerRadius="14">
+                                <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                        </ControlTemplate>
+                    </Button.Template>
+                </Button>
+                <TextBlock x:Name="RefreshingText" Margin="10,0,0,0" VerticalAlignment="Center"
+                           Foreground="#B0B3B8" FontSize="12" Text="Refreshing…" Visibility="Collapsed"/>
+            </StackPanel>
+
+            <!-- Footer -->
+            <Button x:Name="FooterButton" DockPanel.Dock="Bottom" Margin="0,8,0,0" Padding="0,9" Cursor="Hand"
+                    Background="#3A3B3C" Foreground="#FFFFFF" BorderThickness="0" FontSize="14"
+                    Content="See previous notifications" AutomationProperties.Name="See previous notifications on Facebook"
+                    Click="OnFooter">
+                <Button.Template>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                            <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Button.Template>
+            </Button>
+
+            <!-- State panels + list -->
+            <Grid>
+                <StackPanel x:Name="SignInPanel" Visibility="Collapsed" Margin="8,18" VerticalAlignment="Top">
+                    <TextBlock TextWrapping="Wrap" Foreground="#E4E6EB" FontSize="14"
+                               Text="You're not signed in to Facebook in FaceTray yet."/>
+                    <Button Margin="0,12,0,0" Padding="14,7" HorizontalAlignment="Left" Cursor="Hand"
+                            Background="#2D88FF" Foreground="White" BorderThickness="0"
+                            Content="Sign in to Facebook" AutomationProperties.Name="Sign in to Facebook"
+                            Click="OnSignIn"/>
+                </StackPanel>
+
+                <TextBlock x:Name="LoadingPanel" Visibility="Collapsed" Margin="8,18" VerticalAlignment="Top"
+                           Foreground="#B0B3B8" FontSize="14" Text="Loading your notifications…"/>
+
+                <TextBlock x:Name="CaughtUpPanel" Visibility="Collapsed" Margin="8,18" VerticalAlignment="Top"
+                           Foreground="#E4E6EB" FontSize="14" Text="You're all caught up."/>
+
+                <StackPanel x:Name="ErrorPanel" Visibility="Collapsed" Margin="8,18" VerticalAlignment="Top">
+                    <TextBlock x:Name="ErrorText" TextWrapping="Wrap" Foreground="#E4E6EB" FontSize="14"/>
+                    <Button Margin="0,12,0,0" Padding="14,7" HorizontalAlignment="Left" Cursor="Hand"
+                            Background="#3A3B3C" Foreground="White" BorderThickness="0"
+                            Content="Retry" AutomationProperties.Name="Retry loading notifications"
+                            Click="OnRetry"/>
+                </StackPanel>
+
+                <ScrollViewer x:Name="ListScroll" VerticalScrollBarVisibility="Auto" MaxHeight="470">
+                    <StackPanel x:Name="ItemsPanel"/>
+                </ScrollViewer>
+            </Grid>
+        </DockPanel>
+    </Border>
+</Window>
