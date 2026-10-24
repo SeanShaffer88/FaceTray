@@ -40,7 +40,15 @@ FaceTray reads Facebook's web UI, so a Facebook layout change can break the tick
 
 ## Screenshots
 
-Captured from real runs on SEAN's Windows machine — no placeholders.
+Captured from real runs on SEAN's Windows machine — no placeholders. Names and profile photos in the ticker shot are blurred for privacy; everything else is exactly as the app renders it.
+
+The ticker, signed in (real notifications from the v0.1.1 field run):
+
+![Ticker with notifications, names and photos blurred](docs/screenshots/ticker.png)
+
+The Unread filter, with nothing unread:
+
+![Ticker Unread filter, empty](docs/screenshots/ticker-unread.png)
 
 The ticker before sign-in — the first thing a new user sees:
 
@@ -53,8 +61,7 @@ Settings:
 Still to capture:
 
 1. Tray icon at 0 / 3 / 9+ unread (taskbar corner, 200% crop)
-2. Ticker popup — mixed read/unread (a real capture exists from the v0.1.0 field run, but it shows friends' names, so it is not published as-is — a privacy-blurred version may follow)
-3. Login window
+2. Login window
 
 ## Building
 

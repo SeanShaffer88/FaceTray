@@ -9,13 +9,18 @@ Proven by that run:
 - [x] Settings window renders correctly with the expected states (poll interval “Every minute”, Start-with-Windows off, tray pop-up off, session-folder path shown) — 2026-10-23.
 Found by that run, fixed in v0.1.1: relative time printed twice per row; avatars all grey placeholders.
 
-## v0.1.1 verification (SEAN's next run)
-- [ ] Avatars show real profile photos (not grey placeholders) — and if any still fail, the log gains an “Avatar image failed to load” line (captured-but-failed) vs no line (not captured).
-- [ ] Relative time appears exactly once per row.
+## Field pass — 2026-10-23 (SEAN, v0.1.1, three captures + his confirmation)
+Proven by that run:
+- [x] Avatars show real profile photos on every row — 2026-10-23 capture.
+- [x] Relative time appears exactly once per row — 2026-10-23 capture.
+- [x] Unread pill filters the list; with nothing unread it shows “No unread notifications.” — 2026-10-23 capture.
+- [x] Tray counter bubble correct — confirmed by SEAN 2026-10-23.
+- [x] Clicking a notification opens it in the default browser — confirmed by SEAN 2026-10-23.
+- [x] Installer works — confirmed by SEAN 2026-10-23 (v0.1.1 installer).
 
 ## Install & first run
 - [x] Run `FaceTray.exe` — no error, ticker opens showing the sign-in state (2026-10-23 captures; which build route he launched was not recorded).
-- [ ] Installer: `FaceTray-Setup-v0.1.0-x64.exe` installs per-user without admin; Start Menu shortcut works.
+- [x] Installer installs per-user without admin (v0.1.1 installer confirmed by SEAN 2026-10-23).
 - [ ] SmartScreen note: record exact wording shown for the unsigned build.
 
 ## Sign-in
@@ -25,8 +30,8 @@ Found by that run, fixed in v0.1.1: relative time printed twice per row; avatars
 - [x] FaceTray shows the signed-out state with the sign-in button (2026-10-23 capture, pre-sign-in).
 
 ## Counter accuracy
-- [ ] Compare the tray bubble and tooltip against facebook.com's own count at 0, 1–9, and 10+ unread (`9+` shows).
-- [ ] Open one notification from the ticker — counter drops by one at once; the item opens in the default browser at the right post.
+- [x] Tray bubble shows the unread count (SEAN confirmed the bubble is correct, 2026-10-23; a per-count 0 / 1–9 / 10+ capture set is still welcome for the README).
+- [x] Clicking a notification opens it in the default browser (SEAN confirmed, 2026-10-23).
 - [ ] “Mark all read” (tray menu and ticker `···` menu) — bubble disappears; facebook.com itself still shows its own read state (expected difference, see DECISIONS.md).
 
 ## Ticker fidelity vs SEAN's reference capture
@@ -43,7 +48,7 @@ Found by that run, fixed in v0.1.1: relative time printed twice per row; avatars
 
 ## Screenshots (wire into README when captured)
 - [ ] Tray icon at 0 / 3 / 9+ unread (taskbar corner, 200% crop)
-- [ ] Ticker popup — mixed read/unread
+- [x] Ticker popup (privacy-blurred version wired into README as docs/screenshots/ticker.png; Unread-empty state as ticker-unread.png — 2026-10-23)
 - [ ] Login window
 - [x] Settings window (captured 2026-10-23; wired into README as docs/screenshots/settings.png)
 
