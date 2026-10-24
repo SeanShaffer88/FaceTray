@@ -2,42 +2,153 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="FaceTray Settings"
-        Width="440" SizeToContent="Height" ResizeMode="NoResize"
+        Width="470" SizeToContent="Height" ResizeMode="NoResize"
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource BgBrush}"
         Icon="facetray.ico">
-    <StackPanel Margin="18">
-        <TextBlock Text="Settings" FontSize="18" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
+    <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="780">
+        <StackPanel Margin="18">
+            <TextBlock Text="Settings" FontSize="18" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
 
-        <TextBlock Margin="0,16,0,4" Text="Check for new notifications" Foreground="{StaticResource TextBrush}"/>
-        <ComboBox x:Name="PollIntervalBox" AutomationProperties.Name="Check for new notifications interval">
-            <ComboBoxItem Tag="30" Content="Every 30 seconds"/>
-            <ComboBoxItem Tag="60" Content="Every minute"/>
-            <ComboBoxItem Tag="120" Content="Every 2 minutes"/>
-            <ComboBoxItem Tag="300" Content="Every 5 minutes"/>
-        </ComboBox>
-        <TextBlock Margin="0,4,0,0" FontSize="12" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}"
-                   Text="FaceTray re-reads your Facebook notifications page at this interval. Shorter intervals see news sooner but use a little more data."/>
+            <!-- Polling -->
+            <TextBlock Margin="0,16,0,4" Text="Check for new notifications" Foreground="{StaticResource TextBrush}"/>
+            <ComboBox x:Name="PollIntervalBox" AutomationProperties.Name="Check for new notifications interval">
+                <ComboBoxItem Tag="30" Content="Every 30 seconds"/>
+                <ComboBoxItem Tag="60" Content="Every minute"/>
+                <ComboBoxItem Tag="120" Content="Every 2 minutes"/>
+                <ComboBoxItem Tag="300" Content="Every 5 minutes"/>
+            </ComboBox>
+            <TextBlock Margin="0,4,0,0" FontSize="12" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}"
+                       Text="FaceTray re-reads your Facebook notifications page at this interval, and adapts: sooner while unread notifications are waiting, slower after a run of quiet polls. Shorter intervals see news sooner but use a little more data."/>
 
-        <CheckBox x:Name="StartWithWindowsBox" Margin="0,16,0,0" Foreground="{StaticResource TextBrush}"
-                  Content="Start FaceTray with Windows (quietly, in the tray)"/>
-        <CheckBox x:Name="ShowToastsBox" Margin="0,8,0,0" Foreground="{StaticResource TextBrush}"
-                  Content="Show a tray pop-up when new notifications arrive"/>
+            <CheckBox x:Name="StartWithWindowsBox" Margin="0,14,0,0" Foreground="{StaticResource TextBrush}"
+                      Content="Start FaceTray with Windows (quietly, in the tray)"/>
 
-        <Border Margin="0,18,0,0" Padding="0,12,0,0" BorderThickness="0,1,0,0" BorderBrush="{StaticResource HairlineBrush}">
-            <StackPanel>
-                <TextBlock Text="Your data" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
-                <TextBlock Margin="0,4,0,0" FontSize="12" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}"
-                           Text="FaceTray stores its settings, the last notifications it saw, and which ones you've read — all on this PC only. Clear data removes that. To fully sign out, also delete the Facebook session folder shown below after closing FaceTray (deleting it while FaceTray runs isn't safe)."/>
-                <TextBlock x:Name="ProfilePathText" Margin="0,6,0,0" FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}"/>
-                <Button x:Name="ClearDataButton" Margin="0,8,0,0" HorizontalAlignment="Left" Padding="12,5"
-                        Content="Clear data…" Click="OnClearData"/>
+            <!-- Notifications -->
+            <Border Margin="0,18,0,0" Padding="0,12,0,0" BorderThickness="0,1,0,0" BorderBrush="{StaticResource HairlineBrush}">
+                <StackPanel>
+                    <TextBlock Text="Notifications" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
+                    <CheckBox x:Name="ShowToastsBox" Margin="0,8,0,0" Foreground="{StaticResource TextBrush}"
+                              Content="Show a pop-up when new notifications arrive"/>
+                    <CheckBox x:Name="PlaySoundBox" Margin="0,8,0,0" Foreground="{StaticResource TextBrush}"
+                              Content="Play a sound with the pop-up"/>
+                    <CheckBox x:Name="QuietHoursBox" Margin="0,8,0,0" Foreground="{StaticResource TextBrush}"
+                              Content="Quiet hours — no pop-ups or sounds between:"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                        <TextBox x:Name="QuietStartBox" Width="64" Text="22:00" AutomationProperties.Name="Quiet hours start (24-hour time)"/>
+                        <TextBlock Margin="8,2,8,0" Text="and" Foreground="{StaticResource MutedBrush}"/>
+                        <TextBox x:Name="QuietEndBox" Width="64" Text="07:00" AutomationProperties.Name="Quiet hours end (24-hour time)"/>
+                        <TextBlock Margin="8,2,0,0" FontSize="12" Foreground="{StaticResource MutedBrush}" Text="(24-hour times; the counter keeps working)"/>
+                    </StackPanel>
+                    <CheckBox x:Name="GlobalHotkeyBox" Margin="0,10,0,0" Foreground="{StaticResource TextBrush}"
+                              Content="Ctrl+Shift+F opens the ticker from anywhere"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Updates -->
+            <Border Margin="0,18,0,0" Padding="0,12,0,0" BorderThickness="0,1,0,0" BorderBrush="{StaticResource HairlineBrush}">
+                <StackPanel>
+                    <TextBlock Text="Updates" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
+                    <CheckBox x:Name="CheckForUpdatesBox" Margin="0,8,0,0" Foreground="{StaticResource TextBrush}"
+                              Content="Check GitHub for a newer FaceTray when FaceTray starts"/>
+                    <TextBlock x:Name="UpdateStatusText" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Type filters -->
+            <Border Margin="0,18,0,0" Padding="0,12,0,0" BorderThickness="0,1,0,0" BorderBrush="{StaticResource HairlineBrush}">
+                <StackPanel>
+                    <TextBlock Text="Show in the ticker" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
+                    <TextBlock Margin="0,4,0,0" FontSize="12" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}"
+                               Text="Untick a kind to hide it from the ticker and the unread counter."/>
+                    <CheckBox x:Name="ShowCommentsMentionsBox" Margin="0,8,0,0" Foreground="{StaticResource TextBrush}" Content="Comments and mentions"/>
+                    <CheckBox x:Name="ShowLikesBox" Margin="0,6,0,0" Foreground="{StaticResource TextBrush}" Content="Likes and reactions"/>
+                    <CheckBox x:Name="ShowBirthdaysBox" Margin="0,6,0,0" Foreground="{StaticResource TextBrush}" Content="Birthdays"/>
+                    <CheckBox x:Name="ShowOtherBox" Margin="0,6,0,0" Foreground="{StaticResource TextBrush}" Content="Everything else"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Appearance -->
+            <Border Margin="0,18,0,0" Padding="0,12,0,0" BorderThickness="0,1,0,0" BorderBrush="{StaticResource HairlineBrush}">
+                <StackPanel>
+                    <TextBlock Text="Ticker appearance" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
+                    <ComboBox x:Name="ThemeBox" Margin="0,8,0,0" AutomationProperties.Name="Ticker appearance">
+                        <ComboBoxItem Tag="FacebookDark" Content="Facebook dark"/>
+                        <ComboBoxItem Tag="Light" Content="Light"/>
+                        <ComboBoxItem Tag="FollowWindows" Content="Follow Windows (theme and high contrast)"/>
+                    </ComboBox>
+                    <TextBlock Margin="0,10,0,4" Text="Ticker text size" Foreground="{StaticResource TextBrush}"/>
+                    <ComboBox x:Name="TextScaleBox" AutomationProperties.Name="Ticker text size">
+                        <ComboBoxItem Tag="100" Content="100%"/>
+                        <ComboBoxItem Tag="125" Content="125%"/>
+                        <ComboBoxItem Tag="150" Content="150%"/>
+                    </ComboBox>
+                </StackPanel>
+            </Border>
+
+            <!-- History -->
+            <Border Margin="0,18,0,0" Padding="0,12,0,0" BorderThickness="0,1,0,0" BorderBrush="{StaticResource HairlineBrush}">
+                <StackPanel>
+                    <TextBlock Text="History" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
+                    <TextBlock Margin="0,4,0,0" FontSize="12" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}"
+                               Text="FaceTray keeps up to 100 recent notifications on this PC. Older history, read marks and expired snoozes are pruned automatically."/>
+                    <ComboBox x:Name="HistoryBox" Margin="0,8,0,0" AutomationProperties.Name="Keep history for">
+                        <ComboBoxItem Tag="7" Content="Keep history for 7 days"/>
+                        <ComboBoxItem Tag="30" Content="Keep history for 30 days"/>
+                        <ComboBoxItem Tag="90" Content="Keep history for 90 days"/>
+                    </ComboBox>
+                </StackPanel>
+            </Border>
+
+            <!-- Accounts -->
+            <Border Margin="0,18,0,0" Padding="0,12,0,0" BorderThickness="0,1,0,0" BorderBrush="{StaticResource HairlineBrush}">
+                <StackPanel>
+                    <TextBlock Text="Accounts" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
+                    <TextBlock Margin="0,4,0,0" FontSize="12" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}"
+                               Text="Each account has its own sign-in and history. Switching accounts restarts FaceTray; your other accounts stay signed in."/>
+                    <ListBox x:Name="ProfilesList" Margin="0,8,0,0" Height="96" AutomationProperties.Name="Facebook accounts"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                        <Button Padding="10,4" Content="Add…" Click="OnAddProfile"/>
+                        <Button x:Name="RenameProfileButton" Margin="6,0,0,0" Padding="10,4" Content="Rename…" Click="OnRenameProfile"/>
+                        <Button x:Name="RemoveProfileButton" Margin="6,0,0,0" Padding="10,4" Content="Remove" Click="OnRemoveProfile"/>
+                        <Button x:Name="SwitchProfileButton" Margin="6,0,0,0" Padding="10,4" Content="Switch to selected" Click="OnSwitchProfile"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Diagnostics -->
+            <Border Margin="0,18,0,0" Padding="0,12,0,0" BorderThickness="0,1,0,0" BorderBrush="{StaticResource HairlineBrush}">
+                <StackPanel>
+                    <TextBlock Text="Diagnostics" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
+                    <TextBlock x:Name="DiagnosticsText" Margin="0,6,0,0" FontFamily="Consolas" FontSize="11.5"
+                               TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                        <Button Padding="10,4" Content="Open log folder" Click="OnOpenLogFolder"/>
+                        <Button Margin="6,0,0,0" Padding="10,4" Content="Copy diagnostics" Click="OnCopyDiagnostics"/>
+                        <Button Margin="6,0,0,0" Padding="10,4" Content="Refresh" Click="OnRefreshDiagnostics"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Your data -->
+            <Border Margin="0,18,0,0" Padding="0,12,0,0" BorderThickness="0,1,0,0" BorderBrush="{StaticResource HairlineBrush}">
+                <StackPanel>
+                    <TextBlock Text="Your data" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
+                    <TextBlock Margin="0,4,0,0" FontSize="12" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}"
+                               Text="FaceTray stores its settings, the notifications it saw, and which ones you've read — all on this PC only. Clear data removes the active account's cache, read marks and snoozes. To fully sign out an account, also delete its Facebook session folder shown below after closing FaceTray (deleting it while FaceTray runs isn't safe)."/>
+                    <TextBlock x:Name="ProfilePathText" Margin="0,6,0,0" FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                        <Button Padding="12,5" Content="Export settings…" Click="OnExportSettings"/>
+                        <Button Margin="6,0,0,0" Padding="12,5" Content="Import settings…" Click="OnImportSettings"/>
+                        <Button Margin="6,0,0,0" Padding="12,5" Content="Clear data…" Click="OnClearData"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <StackPanel Margin="0,20,0,0" Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Padding="14,6" Content="Cancel" IsCancel="True" Click="OnCancel"/>
+                <Button Margin="8,0,0,0" Padding="14,6" Content="Save" IsDefault="True" Click="OnSave"/>
             </StackPanel>
-        </Border>
-
-        <StackPanel Margin="0,20,0,0" Orientation="Horizontal" HorizontalAlignment="Right">
-            <Button Padding="14,6" Content="Cancel" IsCancel="True" Click="OnCancel"/>
-            <Button Margin="8,0,0,0" Padding="14,6" Content="Save" IsDefault="True" Click="OnSave"/>
         </StackPanel>
-    </StackPanel>
+    </ScrollViewer>
 </Window>

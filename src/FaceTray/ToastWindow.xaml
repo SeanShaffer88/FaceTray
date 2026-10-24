@@ -1,0 +1,40 @@
+<Window x:Class="FaceTray.ToastWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="FaceTray notification"
+        Width="348" SizeToContent="Height"
+        WindowStyle="None" ResizeMode="NoResize" ShowInTaskbar="False"
+        ShowActivated="False" Topmost="True"
+        AllowsTransparency="True" Background="Transparent"
+        AutomationProperties.Name="New Facebook notification">
+    <!-- Facebook-dark styling, matching the ticker. -->
+    <Border Background="#242526" CornerRadius="8" BorderBrush="#3A3B3C" BorderThickness="1"
+            Padding="12" Cursor="Hand" MouseLeftButtonUp="OnToastClicked">
+        <Border.Effect>
+            <DropShadowEffect BlurRadius="16" ShadowDepth="2" Opacity="0.45" Color="Black"/>
+        </Border.Effect>
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="48"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="24"/>
+            </Grid.ColumnDefinitions>
+
+            <Grid x:Name="AvatarHost" Width="40" Height="40" VerticalAlignment="Top">
+                <Ellipse Fill="#3A3B3C"/>
+            </Grid>
+
+            <StackPanel Grid.Column="1" Margin="4,0,0,0">
+                <TextBlock x:Name="BodyText" TextWrapping="Wrap" MaxHeight="58"
+                           TextTrimming="CharacterEllipsis"
+                           Foreground="#E4E6EB" FontSize="13.5"/>
+                <TextBlock x:Name="MetaText" Margin="0,3,0,0" Foreground="#B0B3B8" FontSize="12"/>
+            </StackPanel>
+
+            <Button Grid.Column="2" Width="22" Height="22" VerticalAlignment="Top"
+                    Background="Transparent" Foreground="#B0B3B8" BorderThickness="0" Cursor="Hand"
+                    Content="✕" FontSize="11" AutomationProperties.Name="Dismiss notification"
+                    Click="OnCloseClicked"/>
+        </Grid>
+    </Border>
+</Window>

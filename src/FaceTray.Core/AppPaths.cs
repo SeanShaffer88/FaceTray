@@ -46,6 +46,48 @@ public static class AppPaths
                 "FaceTray", "WebView2");
         }
     }
+
+    // ---- Per-profile paths (v0.2.0) ----
+    // The default profile uses the historic v0.1.x names above, untouched, so
+    // an existing sign-in survives. Other profiles get id-suffixed files and
+    // a sibling session folder. The *In helpers are pure so tests can pin
+    // the layout without touching the environment.
+
+    public static string ReadStatePathFor(string? profileId) =>
+        ReadStatePathIn(RootDir, profileId);
+
+    public static string CachePathFor(string? profileId) =>
+        CachePathIn(RootDir, profileId);
+
+    /// <summary>Snoozed notification ids → when each snooze ends (default profile).</summary>
+    public static string SnoozePath => Path.Combine(RootDir, "snooze-state.json");
+
+    public static string SnoozePathFor(string? profileId) =>
+        Profiles.IsDefault(profileId)
+            ? SnoozePath
+            : Path.Combine(RootDir, $"snooze-state-{profileId}.json");
+
+    public static string WebViewDataDirFor(string? profileId)
+    {
+        if (Profiles.IsDefault(profileId))
+            return WebViewDataDir;
+        var overrideDir = Environment.GetEnvironmentVariable("FACETRAY_HOME");
+        if (!string.IsNullOrWhiteSpace(overrideDir))
+            return Path.Combine(overrideDir, $"WebView2-{profileId}");
+        return Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "FaceTray", $"WebView2-{profileId}");
+    }
+
+    internal static string ReadStatePathIn(string rootDir, string? profileId) =>
+        Path.Combine(rootDir, Profiles.IsDefault(profileId)
+            ? "read-state.json"
+            : $"read-state-{profileId}.json");
+
+    internal static string CachePathIn(string rootDir, string? profileId) =>
+        Path.Combine(rootDir, Profiles.IsDefault(profileId)
+            ? "notifications-cache.json"
+            : $"notifications-cache-{profileId}.json");
 }
 
 /// <summary>

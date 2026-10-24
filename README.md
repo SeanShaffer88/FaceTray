@@ -2,15 +2,20 @@
 
 ## TL;DR
 
-FaceTray puts your Facebook notifications in the Windows system tray. The tray icon shows a red counter bubble with how many unread notifications you have; click it and a ticker pops up that looks like Facebook's own notifications menu — latest notifications, grouped into Today and Earlier. Click any notification and it opens in your default browser. You sign in once, inside FaceTray, and it stays signed in.
+FaceTray puts your Facebook notifications in the Windows system tray. The tray icon shows a red counter bubble with how many unread notifications you have; click it and a ticker pops up that looks like Facebook's own notifications menu — latest notifications, grouped into Today and Earlier. Click any notification and it opens in your default browser. You sign in once, inside FaceTray, and it stays signed in. Multiple Facebook accounts are supported, each with its own sign-in.
 
 ## Features
 
 - **Live counter on the tray icon** — re-rendered at runtime (1–9, then `9+`; no bubble at zero). The tooltip says “FaceTray — 3 unread”.
-- **Facebook-style ticker** — 380px dark panel (`#242526`), “Notifications” header with a `···` menu, All / Unread filter pills, Today / Earlier sections, 56px circular avatars with a coloured type badge (green speech bubble for comments and mentions, blue thumbs-up for likes, pink cake for birthdays, grey bell otherwise), relative times, a blue dot on unread rows, and the “See previous notifications” footer button.
+- **Facebook-style ticker** — 380px dark panel (`#242526`), “Notifications” header with a `···` menu, All / Unread filter pills, Today / Earlier sections, 56px circular avatars (stacked, up to three, on group notifications) with a coloured type badge (green speech bubble for comments and mentions, blue thumbs-up for likes, pink cake for birthdays, grey bell otherwise), relative times, a blue dot on unread rows, and the “See previous notifications” footer button.
 - **Click a notification → your default browser**, at that notification's exact Facebook link. It is marked read locally at once, so the counter drops immediately.
-- **Right-click tray menu** — Open Facebook, Notifications page, Refresh Now, Mark all read, Pause/Resume polling, Settings, Exit. A second launch of FaceTray toggles the ticker instead of starting a copy.
-- **Adjustable polling** — every 30 seconds, minute, 2 minutes or 5 minutes (Settings). Optional tray pop-up when new notifications arrive (off by default) and optional Start with Windows (off by default, starts quietly in the tray).
+- **Reading tools** — search box (person or text), Settings type filters (hide likes, birthdays, … from ticker *and* counter), hover ✓ to mark one notification read without a browser trip, snooze for 1 hour or until tomorrow, and a 100-notification history with “Show more”.
+- **Multiple accounts** — up to 8 Facebook accounts, each with its own sign-in session and history; switch from Settings (FaceTray restarts into the chosen account). The tray menu names the active account when you have more than one.
+- **Alerts your way** — a rich pop-up card for new notifications (avatar, text, click to open), an optional sound, quiet hours that mute both overnight, and a tray menu that lists the 5 most recent notifications. **Ctrl+Shift+F** pops the ticker from anywhere.
+- **Right-click tray menu** — Open Facebook, Notifications page, recent notifications, Refresh Now, Mark all read, Pause/Resume polling, Settings, Exit. A second launch of FaceTray toggles the ticker instead of starting a copy.
+- **Adjustable, adaptive polling** — every 30 seconds, minute, 2 minutes or 5 minutes (Settings); checks sooner while unread wait, slower when quiet. Optional Start with Windows (off by default, starts quietly in the tray).
+- **Self-defence** — an update notifier (checks GitHub once per launch, can be turned off), an extraction-health warning banner if Facebook's layout changes under the reader, a diagnostics panel in Settings (versions and counts only), and settings export/import for moving PCs.
+- **Ticker themes & text size** — Facebook dark, Light, or Follow Windows (including high-contrast system colours), plus 100/125/150% ticker text.
 - **Forgiving states** — sign-in prompt when you're signed out, “You're all caught up”, the last-good list stays on screen when you're offline, and a plain-language error with Retry when a load fails.
 
 ## Install
@@ -32,7 +37,7 @@ There is no working official API for personal Facebook notifications (the Graph 
 
 ## Privacy
 
-Local-only. No telemetry, no third-party servers, no token extraction — nothing leaves your PC except Facebook itself, over the same connection your browser would make. Settings, the last-seen notification list and your local read marks live in `%APPDATA%\FaceTray` as plain JSON; the diagnostic log (`%APPDATA%\FaceTray\logs\facetray.log`) records hosts and paths only, never full URLs, page content, cookies or tokens. Settings → Clear data wipes the local cache and read marks; the Settings window also shows the session folder path if you ever want to delete it (while FaceTray is closed) to sign out completely.
+Local-only. No telemetry, no third-party servers, no token extraction — nothing leaves your PC except Facebook itself, over the same connection your browser would make, plus one optional exception: once per launch FaceTray can ask GitHub's API whether a newer FaceTray exists (turn it off in Settings → Updates; nothing is ever downloaded automatically). Settings, the last-seen notification list and your local read marks live in `%APPDATA%\FaceTray` as plain JSON; the diagnostic log (`%APPDATA%\FaceTray\logs\facetray.log`) records hosts and paths only, never full URLs, page content, cookies or tokens. Settings → Clear data wipes the active account's local cache, read marks and snoozes; the Settings window also shows the session folder path if you ever want to delete it (while FaceTray is closed) to sign out completely.
 
 ## Honest limitation
 

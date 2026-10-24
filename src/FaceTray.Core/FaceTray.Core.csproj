@@ -7,4 +7,9 @@
     <LangVersion>latest</LangVersion>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- Tests pin a few pure internal helpers (path layout, time normalization). -->
+    <InternalsVisibleTo Include="FaceTray.Core.Tests" />
+  </ItemGroup>
+
 </Project>

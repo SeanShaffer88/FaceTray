@@ -2,6 +2,40 @@
 
 All notable changes to FaceTray are recorded here. Versions follow semantic versioning.
 
+## [0.2.0] — 2026-10-24
+
+The “all 20 enhancements” release: a deeper, quieter, more capable ticker, multiple accounts, and the safety nets for the day Facebook changes its layout. **All v0.2.0 runtime behaviour is Unverified** — it has been built, unit-tested (197 Core tests) and CI-gated, but none of the new behaviour has run on a real Windows desktop yet; RELEASE_CHECKLIST.md carries the on-machine pass that promotes it.
+
+### Ticker & reading
+- **Stacked avatars** — group notifications now render up to three overlapping circular avatars, like Facebook's own menu, instead of only the first.
+- **Per-row mark as read** — hovering (or keyboard-focusing) a row shows a ✓ button that marks just that notification read locally and updates the counter, without opening the browser.
+- **Search** — a search box under the header filters the list by person or text, on top of the All/Unread pills.
+- **Type filters** — Settings can hide Comments & mentions, Likes & reactions, Birthdays, or everything else from the ticker *and* the counter.
+- **Deeper history** — the local history now keeps up to 100 notifications (was the latest 20); the ticker shows 20 at a time with a “Show more” button.
+- **Snooze** — each row (hover clock button or right-click) can be snoozed for 1 hour or until tomorrow morning; snoozed items read as read, stop counting, and resurface as unread when the snooze ends.
+
+### Alerts & tray
+- **Rich pop-up** — the plain tray balloon is replaced by a small Facebook-dark card (avatar, text, time, “+N more”), click to open the notification, auto-dismisses in ~6 seconds.
+- **Quiet hours** — a nightly window (default 22:00–07:00, off until enabled) suppresses pop-ups and sounds while polling and counting continue.
+- **Sound cue** — optional system sound with the pop-up, off by default.
+- **Global hotkey** — Ctrl+Shift+F toggles the ticker from anywhere (can be turned off; if another app owns the chord, FaceTray logs it and carries on).
+- **Recent in the tray menu** — the right-click menu now lists the five most recent notifications; clicking one opens it in the browser and marks it read.
+
+### Accounts, settings & data
+- **Multiple accounts** — add up to 8 Facebook accounts, each with its own sign-in session and history; the original account keeps its existing sign-in untouched. Switching restarts FaceTray into the chosen account. Removing an account deletes its session and local data.
+- **Settings export/import** — back up all settings to a JSON file and restore them on another PC (no sign-in data is ever in settings).
+- **Adaptive polling** — checks sooner while unread notifications wait, and relaxes after a run of quiet polls.
+- **Auto-prune** — history, read marks and snoozes older than 7/30/90 days (your choice, default 30) are pruned automatically; older files from v0.1.x load safely.
+
+### Reliability
+- **Update notifier** — once per launch FaceTray checks GitHub for a newer release (can be turned off); an update adds a tray-menu entry and a note in Settings.
+- **Extraction health warning** — if Facebook's page stops matching what the reader expects (title count vs rows found), the ticker shows a slim “Facebook's layout may have changed” banner instead of silently going stale, and the mismatch is logged.
+- **Diagnostics panel** — Settings shows version, active account, last poll result and extraction health, with “Open log folder” and “Copy diagnostics” (counts and versions only — never notification text or full URLs).
+
+### Polish & accessibility
+- **Ticker themes** — Facebook dark (default), a Light palette, or Follow Windows (light/dark plus real high-contrast system colours).
+- **Ticker text size** — 100% / 125% / 150% scaling for ticker text, applied live from Settings.
+
 ## [0.1.1] — 2026-10-23
 
 Field fixes from SEAN's first on-machine run of v0.1.0.

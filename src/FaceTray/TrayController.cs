@@ -10,6 +10,11 @@ namespace FaceTray;
 /// invoke App callbacks on the dispatcher — nothing is disposed inside an
 /// event dispatch (the ytTrayDL lesson); disposal happens once, from the
 /// app's exit path, after the message loop is leaving.
+///
+/// v0.2.0: the menu is REBUILT whenever the poller reports in, so it can
+/// carry the active-account header, an “Update available” entry and the
+/// five most recent notifications. The old balloon tip is gone — the
+/// custom toast window replaced it.
 /// </summary>
 public sealed class TrayController : IDisposable
 {
@@ -19,7 +24,12 @@ public sealed class TrayController : IDisposable
     private Forms.NotifyIcon? _icon;
     private Icon? _currentIcon;
     private int _unreadCount = -1; // forces the first render
+    private bool _paused;
     private bool _disposed;
+
+    private IReadOnlyList<NotificationItem> _recentItems = Array.Empty<NotificationItem>();
+    private string? _profileLabel;
+    private string? _updateLabel;
 
     // Wired by App.
     public Action? ToggleTickerRequested;
@@ -30,6 +40,8 @@ public sealed class TrayController : IDisposable
     public Action? TogglePauseRequested;
     public Action? SettingsRequested;
     public Action? ExitRequested;
+    public Action<NotificationItem>? RecentItemClicked;
+    public Action? UpdateClicked;
 
     public TrayController(DiagnosticLog log, Dispatcher dispatcher)
     {
@@ -42,20 +54,7 @@ public sealed class TrayController : IDisposable
         try
         {
             _icon = new Forms.NotifyIcon { Visible = true, Text = "FaceTray" };
-            var menu = new Forms.ContextMenuStrip();
-            menu.Items.Add("Open Facebook", null, (_, _) => Dispatch(() => OpenFacebookRequested?.Invoke()));
-            menu.Items.Add("Notifications page", null, (_, _) => Dispatch(() => OpenNotificationsRequested?.Invoke()));
-            menu.Items.Add(new Forms.ToolStripSeparator());
-            menu.Items.Add("Refresh Now", null, (_, _) => Dispatch(() => RefreshRequested?.Invoke()));
-            menu.Items.Add("Mark all read", null, (_, _) => Dispatch(() => MarkAllReadRequested?.Invoke()));
-            var pauseItem = new Forms.ToolStripMenuItem("Pause polling");
-            pauseItem.Click += (_, _) => Dispatch(() => TogglePauseRequested?.Invoke());
-            menu.Items.Add(pauseItem);
-            PauseMenuItem = pauseItem;
-            menu.Items.Add(new Forms.ToolStripSeparator());
-            menu.Items.Add("Settings…", null, (_, _) => Dispatch(() => SettingsRequested?.Invoke()));
-            menu.Items.Add("Exit", null, (_, _) => Dispatch(() => ExitRequested?.Invoke()));
-            _icon.ContextMenuStrip = menu;
+            _icon.ContextMenuStrip = BuildMenu();
             _icon.MouseClick += (_, e) =>
             {
                 if (e.Button == Forms.MouseButtons.Left)
@@ -70,12 +69,88 @@ public sealed class TrayController : IDisposable
         }
     }
 
-    public Forms.ToolStripMenuItem? PauseMenuItem { get; private set; }
+    private Forms.ContextMenuStrip BuildMenu()
+    {
+        var menu = new Forms.ContextMenuStrip();
+
+        if (_profileLabel is not null)
+        {
+            menu.Items.Add(new Forms.ToolStripMenuItem($"Account: {_profileLabel}") { Enabled = false });
+            menu.Items.Add(new Forms.ToolStripSeparator());
+        }
+        if (_updateLabel is not null)
+        {
+            menu.Items.Add(_updateLabel, null, (_, _) => Dispatch(() => UpdateClicked?.Invoke()));
+            menu.Items.Add(new Forms.ToolStripSeparator());
+        }
+
+        menu.Items.Add("Open Facebook", null, (_, _) => Dispatch(() => OpenFacebookRequested?.Invoke()));
+        menu.Items.Add("Notifications page", null, (_, _) => Dispatch(() => OpenNotificationsRequested?.Invoke()));
+        menu.Items.Add(new Forms.ToolStripSeparator());
+
+        if (_recentItems.Count > 0)
+        {
+            menu.Items.Add(new Forms.ToolStripMenuItem("Recent") { Enabled = false });
+            foreach (var item in _recentItems.Take(5))
+            {
+                var captured = item;
+                var entry = new Forms.ToolStripMenuItem(DisplayText.Truncate(item.Text, 48));
+                entry.Click += (_, _) => Dispatch(() => RecentItemClicked?.Invoke(captured));
+                menu.Items.Add(entry);
+            }
+            menu.Items.Add(new Forms.ToolStripSeparator());
+        }
+
+        menu.Items.Add("Refresh Now", null, (_, _) => Dispatch(() => RefreshRequested?.Invoke()));
+        menu.Items.Add("Mark all read", null, (_, _) => Dispatch(() => MarkAllReadRequested?.Invoke()));
+        menu.Items.Add(_paused ? "Resume polling" : "Pause polling", null,
+            (_, _) => Dispatch(() => TogglePauseRequested?.Invoke()));
+        menu.Items.Add(new Forms.ToolStripSeparator());
+        menu.Items.Add("Settings…", null, (_, _) => Dispatch(() => SettingsRequested?.Invoke()));
+        menu.Items.Add("Exit", null, (_, _) => Dispatch(() => ExitRequested?.Invoke()));
+        return menu;
+    }
+
+    private void RebuildMenu()
+    {
+        if (_icon is null)
+            return;
+        var old = _icon.ContextMenuStrip;
+        _icon.ContextMenuStrip = BuildMenu();
+        old?.Dispose();
+    }
+
+    /// <summary>Feeds the menu's dynamic parts; called whenever the poller reports in.</summary>
+    public void SetRecentItems(IReadOnlyList<NotificationItem> items) => _recentItems = items;
+
+    /// <summary>Shows the active account in the menu + tooltip; null when there is only one profile.</summary>
+    public void SetProfileLabel(string? profileName)
+    {
+        if (_profileLabel == profileName)
+            return;
+        _profileLabel = profileName;
+        RefreshTooltip();
+        RebuildMenu();
+    }
+
+    public void SetUpdateAvailable(string? versionLabel)
+    {
+        var label = versionLabel is null ? null : $"Update available: {versionLabel}";
+        if (_updateLabel == label)
+            return;
+        _updateLabel = label;
+        RebuildMenu();
+    }
+
+    /// <summary>Rebuilds the menu after dynamic state (recent items, pause) changed.</summary>
+    public void RefreshMenu() => RebuildMenu();
 
     public void SetPaused(bool paused)
     {
-        if (PauseMenuItem is not null)
-            PauseMenuItem.Text = paused ? "Resume polling" : "Pause polling";
+        if (_paused == paused)
+            return;
+        _paused = paused;
+        RebuildMenu();
     }
 
     private void Dispatch(Action action)
@@ -87,41 +162,38 @@ public sealed class TrayController : IDisposable
     /// <summary>Re-renders the counter icon when the count changes, and refreshes the tooltip.</summary>
     public void SetUnreadCount(int unreadCount)
     {
-        if (_icon is null || unreadCount == _unreadCount)
-            return;
-        _unreadCount = unreadCount;
-        try
-        {
-            var old = _currentIcon;
-            _currentIcon = TrayIconRenderer.Render(unreadCount);
-            _icon.Icon = _currentIcon;
-            // The old icon is no longer referenced by the NotifyIcon; safe to dispose now.
-            old?.Dispose();
-            _icon.Text = BadgeText.TooltipFor(unreadCount);
-        }
-        catch (Exception ex)
-        {
-            _log.Warn($"Tray icon render failed: {ex.Message}");
-        }
-    }
-
-    /// <summary>Balloon for new notifications (only called when toasts are enabled in Settings).</summary>
-    public void ShowNewNotificationsBalloon(int newCount)
-    {
         if (_icon is null)
             return;
-        try
+        if (unreadCount != _unreadCount)
         {
-            _icon.BalloonTipTitle = "FaceTray";
-            _icon.BalloonTipText = newCount == 1
-                ? "1 new Facebook notification"
-                : $"{newCount} new Facebook notifications";
-            _icon.ShowBalloonTip(4000);
+            _unreadCount = unreadCount;
+            try
+            {
+                var old = _currentIcon;
+                _currentIcon = TrayIconRenderer.Render(unreadCount);
+                _icon.Icon = _currentIcon;
+                // The old icon is no longer referenced by the NotifyIcon; safe to dispose now.
+                old?.Dispose();
+            }
+            catch (Exception ex)
+            {
+                _log.Warn($"Tray icon render failed: {ex.Message}");
+            }
         }
-        catch (Exception ex)
-        {
-            _log.Warn($"Balloon failed: {ex.Message}");
-        }
+        RefreshTooltip();
+    }
+
+    private void RefreshTooltip()
+    {
+        if (_icon is null || _unreadCount < 0)
+            return;
+        var text = BadgeText.TooltipFor(_unreadCount);
+        if (_profileLabel is not null)
+            text = _unreadCount <= 0
+                ? $"FaceTray ({_profileLabel})"
+                : $"FaceTray ({_profileLabel}) — {_unreadCount} unread";
+        // NotifyIcon text is capped at 63 chars on modern Windows.
+        _icon.Text = text.Length <= 63 ? text : text[..63];
     }
 
     public void Dispose()
@@ -134,6 +206,7 @@ public sealed class TrayController : IDisposable
             if (_icon is not null)
             {
                 _icon.Visible = false;
+                _icon.ContextMenuStrip?.Dispose();
                 _icon.Dispose();
                 _icon = null;
             }

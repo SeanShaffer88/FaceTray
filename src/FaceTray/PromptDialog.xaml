@@ -1,0 +1,17 @@
+<Window x:Class="FaceTray.PromptDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="FaceTray"
+        Width="340" SizeToContent="Height" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource BgBrush}"
+        Icon="facetray.ico">
+    <StackPanel Margin="16">
+        <TextBlock x:Name="LabelText" TextWrapping="Wrap" Foreground="{StaticResource TextBrush}"/>
+        <TextBox x:Name="InputBox" Margin="0,10,0,0" AutomationProperties.Name="Name"/>
+        <StackPanel Margin="0,14,0,0" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Padding="12,5" Content="Cancel" IsCancel="True" Click="OnCancel"/>
+            <Button Margin="8,0,0,0" Padding="12,5" Content="OK" IsDefault="True" Click="OnOk"/>
+        </StackPanel>
+    </StackPanel>
+</Window>

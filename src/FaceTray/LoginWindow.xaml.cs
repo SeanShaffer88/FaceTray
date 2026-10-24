@@ -12,14 +12,16 @@ namespace FaceTray;
 public partial class LoginWindow : Window
 {
     private readonly DiagnosticLog _log;
+    private readonly string _webViewDataDir;
     private bool _initialized;
 
     /// <summary>Raised after the window closes so the app can refresh the poller.</summary>
     public event Action? SignInFinished;
 
-    public LoginWindow(DiagnosticLog log)
+    public LoginWindow(DiagnosticLog log, string webViewDataDir)
     {
         _log = log;
+        _webViewDataDir = webViewDataDir;
         InitializeComponent();
         Loaded += async (_, _) => await InitAsync();
         Closed += (_, _) => SignInFinished?.Invoke();
@@ -34,7 +36,7 @@ public partial class LoginWindow : Window
         }
         try
         {
-            var env = await WebViewEnv.GetAsync();
+            var env = await WebViewEnv.GetAsync(_webViewDataDir);
             await Browser.EnsureCoreWebView2Async(env);
             Browser.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
             _initialized = true;

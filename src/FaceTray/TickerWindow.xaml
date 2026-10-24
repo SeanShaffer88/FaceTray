@@ -7,18 +7,17 @@
         ShowActivated="True" Topmost="True"
         AllowsTransparency="True" Background="Transparent"
         AutomationProperties.Name="Facebook notifications ticker">
-    <!-- Facebook's own menu look (SEAN, 2026-10-23): this palette deliberately
-         replaces the black/red family look inside the ticker only. In Windows
-         high-contrast mode these hard-coded colours still apply in v0.1 —
-         recorded in KNOWN_LIMITATIONS.md. -->
-    <Border Background="#242526" CornerRadius="8" BorderBrush="#3A3B3C" BorderThickness="1" Padding="8,10,8,10">
+    <!-- Facebook's own menu look (SEAN, 2026-10-23) is the default palette,
+         applied from code so v0.2.0's Light / Follow-Windows themes and the
+         text-size setting can restyle the same layout. -->
+    <Border x:Name="RootBorder" Background="#242526" CornerRadius="8" BorderBrush="#3A3B3C" BorderThickness="1" Padding="8,10,8,10">
         <Border.Effect>
             <DropShadowEffect BlurRadius="16" ShadowDepth="2" Opacity="0.45" Color="Black"/>
         </Border.Effect>
         <DockPanel>
             <!-- Header -->
             <Grid DockPanel.Dock="Top" Margin="4,0,0,2">
-                <TextBlock Text="Notifications" FontSize="24" FontWeight="Bold" Foreground="#E4E6EB"
+                <TextBlock x:Name="TitleText" Text="Notifications" FontSize="24" FontWeight="Bold" Foreground="#E4E6EB"
                            VerticalAlignment="Center"/>
                 <Button x:Name="MenuButton" HorizontalAlignment="Right" Width="36" Height="36"
                         Background="#3A3B3C" Foreground="#E4E6EB" BorderThickness="0" Cursor="Hand"
@@ -33,6 +32,19 @@
                     </Button.Template>
                 </Button>
             </Grid>
+
+            <!-- Search -->
+            <Border x:Name="SearchBorder" DockPanel.Dock="Top" Margin="4,4,4,2" CornerRadius="6"
+                    Background="#3A3B3C" Padding="8,5">
+                <Grid>
+                    <TextBox x:Name="SearchBox" Background="Transparent" BorderThickness="0"
+                             Foreground="#E4E6EB" FontSize="13.5" CaretBrush="#E4E6EB"
+                             AutomationProperties.Name="Search notifications"
+                             TextChanged="OnSearchChanged"/>
+                    <TextBlock x:Name="SearchHint" Text="Search notifications" FontSize="13.5"
+                               Foreground="#B0B3B8" IsHitTestVisible="False" VerticalAlignment="Center"/>
+                </Grid>
+            </Border>
 
             <!-- Filter pills -->
             <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="4,4,0,6">
@@ -60,26 +72,47 @@
                            Foreground="#B0B3B8" FontSize="12" Text="Refreshing…" Visibility="Collapsed"/>
             </StackPanel>
 
-            <!-- Footer -->
-            <Button x:Name="FooterButton" DockPanel.Dock="Bottom" Margin="0,8,0,0" Padding="0,9" Cursor="Hand"
-                    Background="#3A3B3C" Foreground="#FFFFFF" BorderThickness="0" FontSize="14"
-                    Content="See previous notifications" AutomationProperties.Name="See previous notifications on Facebook"
-                    Click="OnFooter">
-                <Button.Template>
-                    <ControlTemplate TargetType="Button">
-                        <Border Background="{TemplateBinding Background}" CornerRadius="6">
-                            <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                    </ControlTemplate>
-                </Button.Template>
-            </Button>
+            <!-- Extraction-health warning (v0.2.0) -->
+            <Border x:Name="HealthBanner" DockPanel.Dock="Top" Visibility="Collapsed"
+                    Margin="4,0,4,6" CornerRadius="6" Padding="10,7" Background="#4A3A12">
+                <TextBlock x:Name="HealthBannerText" TextWrapping="Wrap" FontSize="12.5" Foreground="#F5C542"
+                           Text="Facebook's layout may have changed — some notifications might be missing."/>
+            </Border>
+
+            <!-- Footer stack: Show more + the Facebook page button -->
+            <StackPanel DockPanel.Dock="Bottom">
+                <Button x:Name="ShowMoreButton" Margin="0,8,0,0" Padding="0,7" Cursor="Hand" Visibility="Collapsed"
+                        Background="#3A3B3C" Foreground="#E4E6EB" BorderThickness="0" FontSize="13"
+                        Content="Show more" AutomationProperties.Name="Show more notifications"
+                        Click="OnShowMore">
+                    <Button.Template>
+                        <ControlTemplate TargetType="Button">
+                            <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                        </ControlTemplate>
+                    </Button.Template>
+                </Button>
+                <Button x:Name="FooterButton" Margin="0,8,0,0" Padding="0,9" Cursor="Hand"
+                        Background="#3A3B3C" Foreground="#FFFFFF" BorderThickness="0" FontSize="14"
+                        Content="See previous notifications" AutomationProperties.Name="See previous notifications on Facebook"
+                        Click="OnFooter">
+                    <Button.Template>
+                        <ControlTemplate TargetType="Button">
+                            <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                        </ControlTemplate>
+                    </Button.Template>
+                </Button>
+            </StackPanel>
 
             <!-- State panels + list -->
             <Grid>
                 <StackPanel x:Name="SignInPanel" Visibility="Collapsed" Margin="8,18" VerticalAlignment="Top">
-                    <TextBlock TextWrapping="Wrap" Foreground="#E4E6EB" FontSize="14"
+                    <TextBlock x:Name="SignInText" TextWrapping="Wrap" Foreground="#E4E6EB" FontSize="14"
                                Text="You're not signed in to Facebook in FaceTray yet."/>
-                    <Button Margin="0,12,0,0" Padding="14,7" HorizontalAlignment="Left" Cursor="Hand"
+                    <Button x:Name="SignInButton" Margin="0,12,0,0" Padding="14,7" HorizontalAlignment="Left" Cursor="Hand"
                             Background="#2D88FF" Foreground="White" BorderThickness="0"
                             Content="Sign in to Facebook" AutomationProperties.Name="Sign in to Facebook"
                             Click="OnSignIn"/>
@@ -93,7 +126,7 @@
 
                 <StackPanel x:Name="ErrorPanel" Visibility="Collapsed" Margin="8,18" VerticalAlignment="Top">
                     <TextBlock x:Name="ErrorText" TextWrapping="Wrap" Foreground="#E4E6EB" FontSize="14"/>
-                    <Button Margin="0,12,0,0" Padding="14,7" HorizontalAlignment="Left" Cursor="Hand"
+                    <Button x:Name="RetryButton" Margin="0,12,0,0" Padding="14,7" HorizontalAlignment="Left" Cursor="Hand"
                             Background="#3A3B3C" Foreground="White" BorderThickness="0"
                             Content="Retry" AutomationProperties.Name="Retry loading notifications"
                             Click="OnRetry"/>

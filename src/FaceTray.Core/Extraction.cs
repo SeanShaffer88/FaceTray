@@ -145,16 +145,25 @@ public sealed class ExtractionResult
     public bool SignedOut { get; init; }
     public IReadOnlyList<NotificationItem> Items { get; init; } = Array.Empty<NotificationItem>();
     public int UnreadCount { get; init; }
+
+    /// <summary>
+    /// Unread flags exactly as the page reported them, before the local
+    /// read store and snoozes were applied. The extraction-health check
+    /// compares this against the page-title count.
+    /// </summary>
+    public int RawUnreadCount { get; init; }
 }
 
 /// <summary>
 /// Turns the script's JSON into validated <see cref="NotificationItem"/>s:
-/// drops non-Facebook / non-https links, dedupes by id, caps at 20,
-/// applies the locally-read set, and counts unread.
+/// drops non-Facebook / non-https links, dedupes by id, caps at
+/// <see cref="MaxItems"/>, applies the locally-read set and active
+/// snoozes, and counts unread.
 /// </summary>
 public static class ExtractionParser
 {
-    public const int MaxItems = 20;
+    /// <summary>Per-poll depth: how many of the page's rows one poll keeps.</summary>
+    public const int MaxItems = 30;
 
     private sealed class Envelope
     {
@@ -167,7 +176,12 @@ public static class ExtractionParser
     /// <param name="json">The inner JSON string produced by the script (already unwrapped from ExecuteScriptAsync's string encoding).</param>
     /// <param name="locallyReadIds">Ids marked read locally; they override the page's unread flag.</param>
     /// <param name="titleCount">Count parsed from the page title, or null.</param>
-    public static ExtractionResult Parse(string? json, IReadOnlySet<string>? locallyReadIds, int? titleCount = null)
+    /// <param name="snoozedIds">Ids snoozed right now; like local reads, they render as read.</param>
+    public static ExtractionResult Parse(
+        string? json,
+        IReadOnlySet<string>? locallyReadIds,
+        int? titleCount = null,
+        IReadOnlySet<string>? snoozedIds = null)
     {
         if (string.IsNullOrWhiteSpace(json))
             return new ExtractionResult { SignedOut = false };
@@ -188,6 +202,7 @@ public static class ExtractionParser
 
         var items = new List<NotificationItem>();
         var seenIds = new HashSet<string>();
+        var rawUnread = 0;
         foreach (var raw in envelope.Items ?? new List<RawNotification>())
         {
             var item = NotificationItem.Create(
@@ -196,7 +211,11 @@ public static class ExtractionParser
                 continue;
             if (!seenIds.Add(item.Id))
                 continue;
+            if (item.IsUnread)
+                rawUnread++;
             if (locallyReadIds is not null && locallyReadIds.Contains(item.Id))
+                item.IsUnread = false;
+            if (snoozedIds is not null && snoozedIds.Contains(item.Id))
                 item.IsUnread = false;
             items.Add(item);
             if (items.Count >= MaxItems)
@@ -209,6 +228,7 @@ public static class ExtractionParser
             SignedOut = false,
             Items = items,
             UnreadCount = TitleCount.ResolveUnreadCount(parsedUnread, items.Count, titleCount),
+            RawUnreadCount = rawUnread,
         };
     }
 
