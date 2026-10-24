@@ -40,12 +40,21 @@ FaceTray reads Facebook's web UI, so a Facebook layout change can break the tick
 
 ## Screenshots
 
-Captured from real runs on SEAN's Windows machine — no placeholders. Capture list (wire the images in when supplied):
+Captured from real runs on SEAN's Windows machine — no placeholders.
+
+The ticker before sign-in — the first thing a new user sees:
+
+![Ticker asking for sign-in](docs/screenshots/ticker-signin.png)
+
+Settings:
+
+![FaceTray Settings](docs/screenshots/settings.png)
+
+Still to capture:
 
 1. Tray icon at 0 / 3 / 9+ unread (taskbar corner, 200% crop)
-2. Ticker popup — mixed read/unread
+2. Ticker popup — mixed read/unread (a real capture exists from the v0.1.0 field run, but it shows friends' names, so it is not published as-is — a privacy-blurred version may follow)
 3. Login window
-4. Settings section of the popup
 
 ## Building
 

@@ -125,6 +125,10 @@ public static class NotificationCacheStore
                 if (item is null || string.IsNullOrWhiteSpace(item.Id)
                     || !UrlGuard.IsAllowedNotificationUrl(item.Href))
                     continue;
+                // Heal v0.1.0 cache entries, whose Text still ends with the
+                // relative-time token the ticker prints separately.
+                item.Text = NotificationItem.StripTrailingTime(
+                    item.Text ?? "", item.RelativeTimeText);
                 item.AvatarUrls ??= new List<string>();
                 if (locallyReadIds is not null && locallyReadIds.Contains(item.Id))
                     item.IsUnread = false;

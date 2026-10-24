@@ -1,7 +1,7 @@
 ; FaceTray installer (NSIS) — per-user install, no admin required.
 ;
 ; Build (from the repo root, with the verified release publish staged):
-;   makensis /DVERSION=0.1.0 /DSTAGE=<dir containing the publish output> installer\FaceTray.nsi
+;   makensis /DVERSION=0.1.1 /DSTAGE=<dir containing the publish output> installer\FaceTray.nsi
 ; Produces FaceTray-Setup-v<VERSION>-x64.exe next to this script.
 ;
 ; Design notes (see DECISIONS.md, 2026-10-23):
@@ -13,7 +13,7 @@
 ;   "also delete" prompt.
 
 !ifndef VERSION
-  !define VERSION "0.1.0"
+  !define VERSION "0.1.1"
 !endif
 !ifndef STAGE
   !error "Pass /DSTAGE=<publish output dir>"

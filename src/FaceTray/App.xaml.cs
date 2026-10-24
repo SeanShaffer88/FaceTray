@@ -86,7 +86,7 @@ public partial class App : System.Windows.Application
 
         _poller = new PollerService(Settings, Log, ReadStore, Dispatcher);
         _tray = new TrayController(Log, Dispatcher);
-        _ticker = new TickerWindow(_poller);
+        _ticker = new TickerWindow(_poller, Log);
         Wire();
 
         _tray.Build();
@@ -217,7 +217,7 @@ public partial class App : System.Windows.Application
         try
         {
             poller = new PollerService(Settings, Log, ReadStore, Dispatcher);
-            ticker = new TickerWindow(poller);
+            ticker = new TickerWindow(poller, Log);
             ticker.ShowTicker();
         }
         catch (Exception ex)

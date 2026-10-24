@@ -57,7 +57,11 @@ public sealed class NotificationItem
         IEnumerable<string>? avatarUrls,
         string? typeHint)
     {
-        var cleanText = CleanText(text);
+        var relTime = (relativeTimeText ?? "").Trim();
+        // The row's innerText includes the relative-time leaf, so the raw
+        // text usually ends with the same token RelativeTimeText carries —
+        // strip it or the ticker prints the time twice (v0.1.0 field bug).
+        var cleanText = StripTrailingTime(CleanText(text), relTime);
         if (cleanText.Length == 0)
             return null;
         if (!UrlGuard.TryNormalizeNotificationUrl(href, out var normalizedHref))
@@ -69,7 +73,7 @@ public sealed class NotificationItem
             Text = cleanText,
             ActorText = GuessActor(cleanText),
             Href = normalizedHref,
-            RelativeTimeText = (relativeTimeText ?? "").Trim(),
+            RelativeTimeText = relTime,
             IsUnread = isUnread,
             Type = InferType(cleanText, typeHint),
             AvatarUrls = (avatarUrls ?? Enumerable.Empty<string>())
@@ -78,6 +82,49 @@ public sealed class NotificationItem
                 .Take(4)
                 .ToList(),
         };
+    }
+
+    // Generic trailing relative-time token (“9h”, “25 min”, “just now”, …).
+    private static readonly Regex TrailingTimeToken = new(
+        @"\s+(just now|yesterday|\d+\s*(m|min|mins|h|hr|hrs|d|w|mo|y))$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>
+    /// Removes a trailing relative-time token from notification text, so it
+    /// is not duplicated by the ticker's own time line. Rules, in order:
+    /// (a) when <paramref name="relativeTimeText"/> is non-empty and the text
+    /// ends with " " + that value (case-insensitive), that exact suffix goes;
+    /// (b) otherwise a generic trailing token matching
+    /// "just now" / "yesterday" / N + unit (m, min, mins, h, hr, hrs, d, w,
+    /// mo, y) is stripped when it follows other text. Text that is ONLY a
+    /// time token is returned unchanged.
+    /// </summary>
+    public static string StripTrailingTime(string text, string? relativeTimeText)
+    {
+        if (string.IsNullOrEmpty(text))
+            return text;
+
+        var rel = (relativeTimeText ?? "").Trim();
+        if (rel.Length > 0)
+        {
+            var suffix = " " + rel;
+            if (text.Length > suffix.Length &&
+                text.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+            {
+                var cut = text[..^suffix.Length].TrimEnd();
+                if (cut.Length > 0)
+                    return cut;
+            }
+        }
+
+        var match = TrailingTimeToken.Match(text);
+        if (match.Success && match.Index > 0)
+        {
+            var cut = text[..match.Index].TrimEnd();
+            if (cut.Length > 0)
+                return cut;
+        }
+        return text;
     }
 
     /// <summary>Stable, short, collision-resistant id for a normalized href.</summary>

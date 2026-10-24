@@ -41,6 +41,7 @@ public partial class TickerWindow : Window
     private static readonly Brush PanelBorder = Freeze(Color.FromRgb(0x24, 0x25, 0x26));
 
     private readonly PollerService _poller;
+    private readonly DiagnosticLog? _log;
     private bool _unreadOnly;
     private bool _menuOpen;
 
@@ -54,9 +55,10 @@ public partial class TickerWindow : Window
     public Action<string>? OpenNotificationsPageRequested;
     public Action<NotificationItem>? NotificationClicked;
 
-    public TickerWindow(PollerService poller)
+    public TickerWindow(PollerService poller, DiagnosticLog? log = null)
     {
         _poller = poller;
+        _log = log;
         InitializeComponent();
         Deactivated += (_, _) =>
         {
@@ -315,6 +317,13 @@ public partial class TickerWindow : Window
                     Height = 56,
                     Clip = new EllipseGeometry(new Point(28, 28), 28, 28),
                 };
+                // Field diagnostics (v0.1.1): when an avatar is captured but
+                // still renders grey, this log line proves the URL reached
+                // the shell and failed to load — as opposed to the script
+                // capturing no URL at all (no line). Host+path only.
+                image.ImageFailed += (_, e) => _log?.Warn(
+                    $"Avatar image failed to load: {UrlGuard.RedactForLog(avatarUrl)}" +
+                    (e.ErrorException is null ? "" : $" ({e.ErrorException.Message})"));
                 RenderOptions.SetBitmapScalingMode(image, BitmapScalingMode.HighQuality);
                 container.Children.Add(image);
             }

@@ -11,8 +11,9 @@ namespace FaceTray.Core;
 ///
 /// The script deliberately uses ONLY semantic signals — anchors and their
 /// hrefs (notifications links carry notif_id / notif_t), aria-labels, role
-/// attributes, img elements and visible text patterns — and never
-/// Facebook's obfuscated class names, which change without notice.
+/// attributes, image-bearing elements (img, SVG image, background-image)
+/// and visible text patterns — and never Facebook's obfuscated class names,
+/// which change without notice.
 /// </summary>
 public static class ExtractionScript
 {
@@ -71,11 +72,37 @@ public static class ExtractionScript
       const hintEl = row.querySelector('[aria-label*="comment" i], [aria-label*="like" i], [aria-label*="birthday" i], [aria-label*="mention" i], [aria-label*="react" i]');
       if (hintEl) typeHint = hintEl.getAttribute('aria-label') || '';
 
-      // Avatars: every profile image in the row (first = primary).
+      // Avatars: profile pictures in the row (first = primary). Facebook
+      // renders them three ways — <img> elements, SVG <image> elements,
+      // and elements with a background-image — so collect all three, in
+      // that order, http(s) URLs only, deduped, capped at 4. Semantic
+      // only: element kinds and URL-bearing attributes, never classes.
       const avatars = [];
+      const seenAvatars = new Set();
+      const pushAvatar = (u) => {
+        if (u && u.startsWith('http') && !seenAvatars.has(u) && avatars.length < 4) {
+          seenAvatars.add(u);
+          avatars.push(u);
+        }
+      };
       row.querySelectorAll('img').forEach(img => {
-        const src = img.getAttribute('src') || '';
-        if (src && src.startsWith('http')) avatars.push(src);
+        let src = img.currentSrc || img.getAttribute('src') || '';
+        if (!src || src.startsWith('data:')) {
+          // currentSrc/src gave nothing usable — take the first srcset URL.
+          const first = (img.getAttribute('srcset') || '').split(',')[0].trim().split(/\s+/)[0];
+          if (first) src = first;
+        }
+        pushAvatar(src);
+      });
+      row.querySelectorAll('image').forEach(im => {
+        pushAvatar(im.getAttribute('href')
+          || im.getAttributeNS('http://www.w3.org/1999/xlink', 'href')
+          || im.getAttribute('xlink:href') || '');
+      });
+      row.querySelectorAll('*').forEach(el => {
+        const bg = getComputedStyle(el).getPropertyValue('background-image') || '';
+        const m = bg.match(/url\(["']?(https?:[^"')]+)["']?\)/);
+        if (m) pushAvatar(m[1]);
       });
 
       // Relative time: a leaf element whose whole text is like 9h / 1d / 25m.

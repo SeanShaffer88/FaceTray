@@ -106,6 +106,39 @@ public class ExtractionParserTests
         Assert.Contains("notif_id", ExtractionScript.Script);
         Assert.Contains("aria-label", ExtractionScript.Script);
     }
+
+    [Fact]
+    public void Parsed_item_text_has_no_trailing_time_but_keeps_the_label()
+    {
+        // Raw row text from innerText carries the time leaf; the parser's
+        // item must not (v0.1.0 printed the time twice per row).
+        const string json = """
+        {"signedOut":false,"items":[
+          {"text":"Travis Iiams commented on your post. 10h","href":"https://www.facebook.com/photo/?fbid=7&notif_id=77","unread":true,"avatars":[],"timeText":"10h","typeHint":""}
+        ]}
+        """;
+        var result = ExtractionParser.Parse(json, null);
+        var item = Assert.Single(result.Items);
+        Assert.Equal("Travis Iiams commented on your post.", item.Text);
+        Assert.Equal("10h", item.RelativeTimeText);
+    }
+
+    [Fact]
+    public void Script_captures_img_svg_and_background_avatars()
+    {
+        // v0.1.1: Facebook also serves profile pictures as SVG <image>
+        // elements and background-image elements — all three capture paths
+        // must be present, still semantic-only.
+        Assert.Contains("currentSrc", ExtractionScript.Script);
+        Assert.Contains("srcset", ExtractionScript.Script);
+        Assert.Contains("querySelectorAll('image'", ExtractionScript.Script);
+        Assert.Contains("getAttributeNS", ExtractionScript.Script);
+        Assert.Contains("xlink:href", ExtractionScript.Script);
+        Assert.Contains("getComputedStyle", ExtractionScript.Script);
+        Assert.Contains("background-image", ExtractionScript.Script);
+        Assert.DoesNotContain("className", ExtractionScript.Script);
+        Assert.DoesNotContain("x1", ExtractionScript.Script);
+    }
 }
 
 public class ReadStoreAndCacheTests
@@ -173,6 +206,31 @@ public class ReadStoreAndCacheTests
 
             var loadedWithRead = NotificationCacheStore.Load(path, new HashSet<string> { item.Id });
             Assert.False(loadedWithRead[0].IsUnread);
+        }
+        finally { try { Directory.Delete(dir, true); } catch { } }
+    }
+
+    [Fact]
+    public void Cache_load_heals_v010_duplicated_time()
+    {
+        var dir = TempDir();
+        try
+        {
+            var path = Path.Combine(dir, "cache.json");
+            // A v0.1.0 cache entry: Text still ends with the time token.
+            var stale = new NotificationItem
+            {
+                Id = "abc123",
+                Text = "Dani Sue commented on your post. 2d",
+                Href = "https://www.facebook.com/photo/?fbid=2&notif_id=33",
+                RelativeTimeText = "2d",
+                IsUnread = true,
+            };
+            NotificationCacheStore.Save(path, new[] { stale });
+            var loaded = NotificationCacheStore.Load(path, null);
+            var item = Assert.Single(loaded);
+            Assert.Equal("Dani Sue commented on your post.", item.Text);
+            Assert.Equal("2d", item.RelativeTimeText);
         }
         finally { try { Directory.Delete(dir, true); } catch { } }
     }

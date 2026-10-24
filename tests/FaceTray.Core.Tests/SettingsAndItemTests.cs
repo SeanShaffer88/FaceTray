@@ -122,6 +122,79 @@ public class NotificationItemTests
     }
 
     [Fact]
+    public void StripTrailingTime_exact_match_strips()
+    {
+        Assert.Equal(
+            "Travis Iiams commented on your post.",
+            NotificationItem.StripTrailingTime("Travis Iiams commented on your post. 9h", "9h"));
+    }
+
+    [Fact]
+    public void StripTrailingTime_case_difference_still_strips()
+    {
+        // Text carries “10H”, the scraped time label says “10h”.
+        Assert.Equal(
+            "Allan Bailey likes your post.",
+            NotificationItem.StripTrailingTime("Allan Bailey likes your post. 10H", "10h"));
+    }
+
+    [Fact]
+    public void StripTrailingTime_just_now_strips()
+    {
+        Assert.Equal(
+            "Dani Sue commented on your post.",
+            NotificationItem.StripTrailingTime("Dani Sue commented on your post. Just now", "Just now"));
+        Assert.Equal(
+            "Dani Sue commented on your post.",
+            NotificationItem.StripTrailingTime("Dani Sue commented on your post. just now", null));
+    }
+
+    [Fact]
+    public void StripTrailingTime_generic_fallback_strips_without_label()
+    {
+        Assert.Equal(
+            "Ashley Marquez mentioned you in a comment.",
+            NotificationItem.StripTrailingTime("Ashley Marquez mentioned you in a comment. 1d", null));
+        Assert.Equal(
+            "It's Norine Morse's birthday today.",
+            NotificationItem.StripTrailingTime("It's Norine Morse's birthday today. Yesterday", ""));
+    }
+
+    [Fact]
+    public void StripTrailingTime_no_trailing_time_keeps_text()
+    {
+        Assert.Equal(
+            "Travis Iiams commented on your post.",
+            NotificationItem.StripTrailingTime("Travis Iiams commented on your post.", "9h"));
+        Assert.Equal(
+            "You have a new friend suggestion.",
+            NotificationItem.StripTrailingTime("You have a new friend suggestion.", null));
+    }
+
+    [Fact]
+    public void StripTrailingTime_text_that_is_only_a_time_is_kept()
+    {
+        Assert.Equal("10h", NotificationItem.StripTrailingTime("10h", "10h"));
+        Assert.Equal("9h", NotificationItem.StripTrailingTime("9h", null));
+        Assert.Equal("Just now", NotificationItem.StripTrailingTime("Just now", "Just now"));
+    }
+
+    [Fact]
+    public void Create_strips_the_duplicated_time_from_text()
+    {
+        var item = NotificationItem.Create(
+            "Allan Bailey, Joseph Robert Boucher and Travis Iiams like your post: " +
+            "\"Faking happiness is exhausting\". 9h",
+            "https://www.facebook.com/photo/?fbid=9&notif_id=42", "9h", true, null, null);
+        Assert.NotNull(item);
+        Assert.Equal(
+            "Allan Bailey, Joseph Robert Boucher and Travis Iiams like your post: " +
+            "\"Faking happiness is exhausting\".",
+            item!.Text);
+        Assert.Equal("9h", item.RelativeTimeText);
+    }
+
+    [Fact]
     public void Avatars_are_capped_and_deduped()
     {
         var item = NotificationItem.Create("X commented on your post.", "https://www.facebook.com/a?notif_id=1", "1h", true,

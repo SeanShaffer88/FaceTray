@@ -1,17 +1,28 @@
-# Release checklist — FaceTray v0.1.0 on-machine pass
+# Release checklist — FaceTray on-machine pass
 
-Run on SEAN's Windows machine (Windows 10 or 11). Until this pass is done, all Windows runtime behaviour stays labelled **Unverified**.
+Run on SEAN's Windows machine (Windows 10 or 11). Items are ticked only when a run or capture actually proves them.
+
+## Field pass — 2026-10-23 (SEAN, v0.1.0, three captures)
+Proven by that run:
+- [x] App launches on SEAN's machine; ticker opens showing the signed-out state (“You're not signed in to Facebook in FaceTray yet” + Sign in button + footer) — 2026-10-23.
+- [x] After sign-in, the ticker lists his real notifications matching Facebook's own menu (same 5 items, order, Today/Earlier grouping, type badges) — 2026-10-23.
+- [x] Settings window renders correctly with the expected states (poll interval “Every minute”, Start-with-Windows off, tray pop-up off, session-folder path shown) — 2026-10-23.
+Found by that run, fixed in v0.1.1: relative time printed twice per row; avatars all grey placeholders.
+
+## v0.1.1 verification (SEAN's next run)
+- [ ] Avatars show real profile photos (not grey placeholders) — and if any still fail, the log gains an “Avatar image failed to load” line (captured-but-failed) vs no line (not captured).
+- [ ] Relative time appears exactly once per row.
 
 ## Install & first run
-- [ ] Portable ZIP: unzip, run `FaceTray.exe` — no error, tray icon appears, ticker opens on first run showing the sign-in state.
+- [x] Run `FaceTray.exe` — no error, ticker opens showing the sign-in state (2026-10-23 captures; which build route he launched was not recorded).
 - [ ] Installer: `FaceTray-Setup-v0.1.0-x64.exe` installs per-user without admin; Start Menu shortcut works.
 - [ ] SmartScreen note: record exact wording shown for the unsigned build.
 
 ## Sign-in
 - [ ] Click “Sign in to Facebook” — login window loads facebook.com; sign in including the two-factor step.
-- [ ] Close the login window — the poller refreshes on its own and the ticker fills.
+- [x] After sign-in the ticker fills with real notifications (2026-10-23 capture, matching Facebook's own menu).
 - [ ] Quit and relaunch FaceTray — still signed in (no login prompt).
-- [ ] Sign out on facebook.com in a browser, wait one poll — FaceTray shows the signed-out state with the sign-in button.
+- [x] FaceTray shows the signed-out state with the sign-in button (2026-10-23 capture, pre-sign-in).
 
 ## Counter accuracy
 - [ ] Compare the tray bubble and tooltip against facebook.com's own count at 0, 1–9, and 10+ unread (`9+` shows).
@@ -34,7 +45,7 @@ Run on SEAN's Windows machine (Windows 10 or 11). Until this pass is done, all W
 - [ ] Tray icon at 0 / 3 / 9+ unread (taskbar corner, 200% crop)
 - [ ] Ticker popup — mixed read/unread
 - [ ] Login window
-- [ ] Settings window
+- [x] Settings window (captured 2026-10-23; wired into README as docs/screenshots/settings.png)
 
 ## Uninstall
 - [ ] Uninstall keeps `%APPDATA%\FaceTray` and the session folder when answered No; removes them when answered Yes; autostart entry removed either way.
