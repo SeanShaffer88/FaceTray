@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -6,20 +7,31 @@ namespace FaceTray.Core;
 /// <summary>
 /// The extraction script run in the hidden WebView2 on
 /// facebook.com/notifications, plus its sentinel contract:
-///   • returns a JSON string: {"signedOut":bool,"items":[{text,href,unread,avatars,timeText,typeHint}]}
+///   • returns a JSON string: {"signedOut":bool,"strategy":1|2|3,"items":[{text,href,unread,avatars,timeText,typeHint,ts}]}
 ///   • signedOut is true when a login form / login URL is detected.
 ///
 /// The script deliberately uses ONLY semantic signals — anchors and their
 /// hrefs (notifications links carry notif_id / notif_t), aria-labels, role
-/// attributes, image-bearing elements (img, SVG image, background-image)
-/// and visible text patterns — and never Facebook's obfuscated class names,
-/// which change without notice.
+/// attributes, image-bearing elements (img, SVG image, background-image),
+/// time carriers (a time element's datetime, an abbr title) and visible
+/// text patterns — and never Facebook's obfuscated class names, which
+/// change without notice.
+///
+/// v0.3.0: rows are discovered by THREE strategies, tried in order, so a
+/// single Facebook markup change has to break all three before the list
+/// goes empty (the health check reports which strategy produced the list):
+///   S1 (primary): anchors carrying notif_id / notif_t — the field-
+///       verified v0.1 approach.
+///   S2 (permalink fallback): anchors to post/story-style targets whose
+///       row container carries a visible time leaf.
+///   S3 (row fallback): listitem/article rows containing an anchor and a
+///       time leaf; the row's first anchor is the target.
 /// </summary>
 public static class ExtractionScript
 {
     public const string Script = """
 (() => {
-  const out = { signedOut: false, items: [] };
+  const out = { signedOut: false, strategy: 1, items: [] };
   try {
     const href = location.href.toLowerCase();
     if (href.includes('/login') || href.includes('/checkpoint')) out.signedOut = true;
@@ -31,23 +43,16 @@ public static class ExtractionScript
     if (out.signedOut) return JSON.stringify(out);
 
     const timeRe = /^(\d+)\s*(m|min|mins|h|hr|hrs|d|w|mo|y)$/i;
-    const seen = new Set();
-    const anchors = document.querySelectorAll('a[href]');
-    for (const a of anchors) {
-      const rawHref = a.getAttribute('href') || '';
-      if (!rawHref) continue;
-      let abs = '';
-      try { abs = new URL(rawHref, location.origin).toString(); } catch { continue; }
-      const low = abs.toLowerCase();
-      if (!low.startsWith('https://')) continue;
-      // Notification targets are links carrying Facebook's notification markers.
-      if (!(low.includes('notif_id') || low.includes('notif_t') || low.includes('/notifications'))) continue;
-      if (low.endsWith('/notifications') || low.includes('/notifications?')) {
-        // The "see all" / footer links point back at the list itself — not a notification.
-        if (!low.includes('notif_id') && !low.includes('notif_t')) continue;
-      }
+    const softTimeRe = /^(just now|yesterday)$/i;
 
-      // Row container: climb to the nearest listitem-ish / labelled ancestor.
+    const absOf = (a) => {
+      const raw = a.getAttribute('href') || '';
+      if (!raw) return '';
+      try { return new URL(raw, location.origin).toString(); } catch { return ''; }
+    };
+
+    // Row container: climb to the nearest listitem-ish / labelled ancestor.
+    const findRow = (a) => {
       let row = a;
       for (let i = 0; i < 6 && row.parentElement; i++) {
         const p = row.parentElement;
@@ -56,16 +61,29 @@ public static class ExtractionScript
         row = p;
         if ((row.innerText || '').length > 40) break;
       }
+      return row;
+    };
 
+    // A leaf element whose whole text is a relative time label (9h, 1d, …).
+    const timeLeafOf = (row) => {
+      const leaves = row.querySelectorAll('span, abbr, div, time');
+      for (const el of leaves) {
+        const t = (el.textContent || '').trim();
+        if (timeRe.test(t) || softTimeRe.test(t)) return el;
+      }
+      return null;
+    };
+
+    // Shared row reader: from a chosen anchor, build one payload item.
+    const readRow = (a, abs) => {
+      const row = findRow(a);
       const text = ((row.innerText || a.innerText || a.getAttribute('aria-label') || '') + '')
         .replace(/\s+/g, ' ').trim();
-      if (!text || text.length < 8) continue;
+      if (!text || text.length < 8) return null;
 
-      // Unread heuristic: an explicit "Unread" label, or Facebook's unread
-      // dot element (aria-hidden visual indicator with an "unread" label nearby).
+      // Unread heuristic: an explicit "Unread" accessible label in the row.
       let unread = false;
-      const labelled = row.querySelector('[aria-label*="Unread"], [aria-label*="unread"]');
-      if (labelled) unread = true;
+      if (row.querySelector('[aria-label*="Unread"], [aria-label*="unread"]')) unread = true;
 
       // Type hint from accessible labels on icons inside the row.
       let typeHint = '';
@@ -105,25 +123,101 @@ public static class ExtractionScript
         if (m) pushAvatar(m[1]);
       });
 
-      // Relative time: a leaf element whose whole text is like 9h / 1d / 25m.
+      // Relative time from the leaf, plus the absolute timestamp when a
+      // semantic time carrier exposes one: the leaf itself may be a time
+      // element (datetime attribute) or an abbr (title attribute), or
+      // wrap one; otherwise any time element in the row speaks for it.
       let timeText = '';
-      const leaves = row.querySelectorAll('span, abbr, div');
-      for (const el of leaves) {
-        const t = (el.textContent || '').trim();
-        if (timeRe.test(t)) { timeText = t; break; }
-        if (/^(just now|yesterday)$/i.test(t)) { timeText = t; break; }
+      let ts = '';
+      const leaf = timeLeafOf(row);
+      if (leaf) {
+        timeText = (leaf.textContent || '').trim();
+        if (leaf.tagName === 'TIME') ts = leaf.getAttribute('datetime') || '';
+        else if (leaf.tagName === 'ABBR') ts = leaf.getAttribute('title') || '';
+        if (!ts && leaf.querySelector) {
+          const inner = leaf.querySelector('time[datetime], abbr[title]');
+          if (inner) ts = inner.getAttribute('datetime') || inner.getAttribute('title') || '';
+        }
+      }
+      if (!ts) {
+        const carrier = row.querySelector('time[datetime]');
+        if (carrier) ts = carrier.getAttribute('datetime') || '';
       }
 
-      const key = abs.split('#')[0];
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.items.push({ text, href: abs, unread, avatars, timeText, typeHint });
-      if (out.items.length >= 30) break;
-    }
+      return { text, href: abs, unread, avatars, timeText, typeHint, ts };
+    };
+
+    // One discovery pass over a candidate anchor list.
+    const runPass = (anchors) => {
+      const items = [];
+      const seen = new Set();
+      for (const a of anchors) {
+        const abs = absOf(a);
+        if (!abs) continue;
+        if (!abs.toLowerCase().startsWith('https://')) continue;
+        const key = abs.split('#')[0];
+        if (seen.has(key)) continue;
+        const item = readRow(a, abs);
+        if (!item) continue;
+        seen.add(key);
+        items.push(item);
+        if (items.length >= 30) break;
+      }
+      return items;
+    };
+
+    // Strategy 1 (primary): notification markers on the link itself.
+    const s1 = [];
+    document.querySelectorAll('a[href]').forEach(a => {
+      const abs = absOf(a);
+      if (!abs) return;
+      const low = abs.toLowerCase();
+      if (!(low.includes('notif_id') || low.includes('notif_t') || low.includes('/notifications'))) return;
+      if (low.endsWith('/notifications') || low.includes('/notifications?')) {
+        // The "see all" / footer links point back at the list itself — not a notification.
+        if (!low.includes('notif_id') && !low.includes('notif_t')) return;
+      }
+      s1.push(a);
+    });
+    let items = runPass(s1);
+    if (items.length > 0) { out.strategy = 1; out.items = items; return JSON.stringify(out); }
+
+    // Strategy 2 (permalink fallback): post/story-style targets in a row
+    // that carries a visible time leaf.
+    const postRe = /\/(posts|story\.php|photo|watch|videos|permalink|share)\b/;
+    const s2 = [];
+    document.querySelectorAll('a[href]').forEach(a => {
+      const abs = absOf(a);
+      if (!abs) return;
+      let path = '';
+      try { path = new URL(abs).pathname.toLowerCase(); } catch { return; }
+      if (!postRe.test(path)) return;
+      if (!timeLeafOf(findRow(a))) return;
+      s2.push(a);
+    });
+    items = runPass(s2);
+    if (items.length > 0) { out.strategy = 2; out.items = items; return JSON.stringify(out); }
+
+    // Strategy 3 (row fallback): structured rows holding an anchor and a
+    // time leaf; the row's first anchor is the notification target.
+    const s3 = [];
+    document.querySelectorAll('[role="listitem"], [role="article"], li').forEach(row => {
+      if (!timeLeafOf(row)) return;
+      const a = row.querySelector('a[href]');
+      if (a) s3.push(a);
+    });
+    items = runPass(s3);
+    if (items.length > 0) { out.strategy = 3; out.items = items; return JSON.stringify(out); }
+
+    // Nothing matched anywhere: report the empty list under the primary
+    // strategy (the health check flags the poll from the title count).
+    out.strategy = 1;
+    out.items = [];
+    return JSON.stringify(out);
   } catch (e) {
     out.error = String(e);
+    return JSON.stringify(out);
   }
-  return JSON.stringify(out);
 })()
 """;
 }
@@ -137,6 +231,9 @@ public sealed class RawNotification
     [JsonPropertyName("avatars")] public List<string>? Avatars { get; set; }
     [JsonPropertyName("timeText")] public string? TimeText { get; set; }
     [JsonPropertyName("typeHint")] public string? TypeHint { get; set; }
+
+    /// <summary>Absolute time text from a semantic time carrier, when the row exposed one.</summary>
+    [JsonPropertyName("ts")] public string? Ts { get; set; }
 }
 
 /// <summary>The outcome of one extraction.</summary>
@@ -152,13 +249,21 @@ public sealed class ExtractionResult
     /// compares this against the page-title count.
     /// </summary>
     public int RawUnreadCount { get; init; }
+
+    /// <summary>
+    /// Which discovery strategy produced the items (v0.3.0): 1 primary,
+    /// 2 permalink fallback, 3 row fallback. Recorded on the poll result
+    /// and surfaced in diagnostics — a strategy above 1 means Facebook's
+    /// markup moved under the primary.
+    /// </summary>
+    public int Strategy { get; init; } = 1;
 }
 
 /// <summary>
 /// Turns the script's JSON into validated <see cref="NotificationItem"/>s:
 /// drops non-Facebook / non-https links, dedupes by id, caps at
-/// <see cref="MaxItems"/>, applies the locally-read set and active
-/// snoozes, and counts unread.
+/// <see cref="MaxItems"/>, applies the locally-read set, active snoozes
+/// and pins, and counts unread.
 /// </summary>
 public static class ExtractionParser
 {
@@ -168,6 +273,7 @@ public static class ExtractionParser
     private sealed class Envelope
     {
         [JsonPropertyName("signedOut")] public bool SignedOut { get; set; }
+        [JsonPropertyName("strategy")] public int Strategy { get; set; } = 1;
         [JsonPropertyName("items")] public List<RawNotification>? Items { get; set; }
     }
 
@@ -177,11 +283,13 @@ public static class ExtractionParser
     /// <param name="locallyReadIds">Ids marked read locally; they override the page's unread flag.</param>
     /// <param name="titleCount">Count parsed from the page title, or null.</param>
     /// <param name="snoozedIds">Ids snoozed right now; like local reads, they render as read.</param>
+    /// <param name="pinnedIds">Ids pinned by the user; flagged on the items for the ticker's Pinned section.</param>
     public static ExtractionResult Parse(
         string? json,
         IReadOnlySet<string>? locallyReadIds,
         int? titleCount = null,
-        IReadOnlySet<string>? snoozedIds = null)
+        IReadOnlySet<string>? snoozedIds = null,
+        IReadOnlySet<string>? pinnedIds = null)
     {
         if (string.IsNullOrWhiteSpace(json))
             return new ExtractionResult { SignedOut = false };
@@ -213,10 +321,13 @@ public static class ExtractionParser
                 continue;
             if (item.IsUnread)
                 rawUnread++;
+            item.TimestampUtc = ParseTimestamp(raw.Ts);
             if (locallyReadIds is not null && locallyReadIds.Contains(item.Id))
                 item.IsUnread = false;
             if (snoozedIds is not null && snoozedIds.Contains(item.Id))
                 item.IsUnread = false;
+            if (pinnedIds is not null && pinnedIds.Contains(item.Id))
+                item.IsPinned = true;
             items.Add(item);
             if (items.Count >= MaxItems)
                 break;
@@ -229,7 +340,27 @@ public static class ExtractionParser
             Items = items,
             UnreadCount = TitleCount.ResolveUnreadCount(parsedUnread, items.Count, titleCount),
             RawUnreadCount = rawUnread,
+            Strategy = envelope.Strategy is >= 1 and <= 3 ? envelope.Strategy : 1,
         };
+    }
+
+    /// <summary>
+    /// Best-effort conversion of a scraped absolute-time string to UTC:
+    /// invariant culture first, then the current culture; anything
+    /// unparseable (or missing) yields null — a timestamp is a tooltip
+    /// nicety, never a reason to drop or break a row.
+    /// </summary>
+    internal static DateTimeOffset? ParseTimestamp(string? ts)
+    {
+        if (string.IsNullOrWhiteSpace(ts))
+            return null;
+        var text = ts.Trim();
+        const DateTimeStyles styles = DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal;
+        if (DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture, styles, out var parsed))
+            return parsed.ToUniversalTime();
+        if (DateTimeOffset.TryParse(text, CultureInfo.CurrentCulture, styles, out parsed))
+            return parsed.ToUniversalTime();
+        return null;
     }
 
     /// <summary>

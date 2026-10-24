@@ -87,6 +87,31 @@ public sealed class AppSettings
     /// </summary>
     public List<string> PendingProfileDeletions { get; set; } = new();
 
+    // ---- v0.3.0 additions ----
+
+    /// <summary>
+    /// Type groups a pop-up (and the one re-alert) may fire for, stored as
+    /// <see cref="NotificationTypeGroups.Key"/> names. Default: all of
+    /// them; an empty list is a real choice (pop-ups for nothing). This
+    /// is the alert-side mirror of <see cref="HiddenTypeGroups"/>.
+    /// </summary>
+    public List<string> AlertTypeGroups { get; set; } = AllTypeGroupKeys();
+
+    /// <summary>One summary pop-up each morning instead of overnight drip-feed. Off by default.</summary>
+    public bool DigestEnabled { get; set; }
+
+    /// <summary>Local time the morning digest is due, as an “HH:mm” string.</summary>
+    public string DigestTime { get; set; } = "08:00";
+
+    /// <summary>
+    /// The date (local, “yyyy-MM-dd”) the last digest was delivered, so
+    /// it fires once per day. Empty until the first one.
+    /// </summary>
+    public string LastDigestDate { get; set; } = "";
+
+    private static List<string> AllTypeGroupKeys() =>
+        Enum.GetValues<NotificationTypeGroup>().Select(NotificationTypeGroups.Key).ToList();
+
     public ProfileInfo ActiveProfile =>
         Profiles.FirstOrDefault(p => p.Id == ActiveProfileId)
         ?? new ProfileInfo { Id = Core.Profiles.DefaultId, Name = Core.Profiles.DefaultName };
@@ -122,6 +147,37 @@ public sealed class AppSettings
             .Where(id => Core.Profiles.IsValidId(id) && id != ActiveProfileId)
             .Distinct()
             .ToList();
+
+        // A null alert list (hand-edited file) means “alert about
+        // everything” — the default. A present-but-empty list is a real
+        // choice and survives sanitizing as empty.
+        if (AlertTypeGroups is null)
+        {
+            AlertTypeGroups = AllTypeGroupKeys();
+        }
+        else
+        {
+            var alerts = new List<string>();
+            foreach (var key in AlertTypeGroups)
+            {
+                if (NotificationTypeGroups.TryParseKey(key, out var group))
+                {
+                    var canonical = NotificationTypeGroups.Key(group);
+                    if (!alerts.Contains(canonical))
+                        alerts.Add(canonical);
+                }
+            }
+            AlertTypeGroups = alerts;
+        }
+
+        DigestTime = TimeOfDayText.Format(
+            TimeOfDayText.TryParse(DigestTime, out var digestTime) ? digestTime : TimeSpan.FromHours(8));
+        LastDigestDate = DateOnly.TryParseExact(
+            (LastDigestDate ?? "").Trim(), "yyyy-MM-dd",
+            System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.None, out var lastDigest)
+            ? lastDigest.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)
+            : "";
         return this;
     }
 

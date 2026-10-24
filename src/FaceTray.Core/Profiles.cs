@@ -10,6 +10,55 @@ public sealed class ProfileInfo
 
     /// <summary>User-facing name (“Personal”, “Work”, …).</summary>
     public string Name { get; set; } = "";
+
+    /// <summary>
+    /// This account's tray counter bubble colour, as a palette hex
+    /// (v0.3.0). Sanitized against <see cref="AccentPalette"/> — anything
+    /// unrecognized falls back to FaceTray red.
+    /// </summary>
+    public string AccentColor { get; set; } = AccentPalette.DefaultHex;
+}
+
+/// <summary>
+/// The fixed counter-bubble colour palette (v0.3.0). A deliberately
+/// closed set: the tray icon is rendered with GDI+, and a free-form hex
+/// from a hand-edited settings file should never reach the renderer
+/// unvalidated. The default profile's default is FaceTray red.
+/// </summary>
+public static class AccentPalette
+{
+    public const string DefaultHex = "#E5484D";
+
+    public static readonly IReadOnlyList<(string Name, string Hex)> Colors = new[]
+    {
+        ("Red", "#E5484D"),
+        ("Orange", "#E07B39"),
+        ("Green", "#46A758"),
+        ("Blue", "#3E8FE1"),
+        ("Purple", "#8E4EC6"),
+        ("Pink", "#E93D82"),
+    };
+
+    /// <summary>Canonical palette hex for an input (case-insensitive), or false when it is not in the palette.</summary>
+    public static bool TryNormalize(string? hex, out string canonical)
+    {
+        canonical = DefaultHex;
+        if (string.IsNullOrWhiteSpace(hex))
+            return false;
+        var candidate = hex.Trim();
+        foreach (var (_, paletteHex) in Colors)
+        {
+            if (candidate.Equals(paletteHex, StringComparison.OrdinalIgnoreCase))
+            {
+                canonical = paletteHex;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static string NormalizeOrDefault(string? hex) =>
+        TryNormalize(hex, out var canonical) ? canonical : DefaultHex;
 }
 
 /// <summary>
@@ -66,7 +115,12 @@ public static class Profiles
                 name = id == DefaultId ? DefaultName : "Account";
             if (name.Length > 60)
                 name = name[..60];
-            result.Add(new ProfileInfo { Id = id, Name = name });
+            result.Add(new ProfileInfo
+            {
+                Id = id,
+                Name = name,
+                AccentColor = AccentPalette.NormalizeOrDefault(profile.AccentColor),
+            });
             if (result.Count >= MaxProfiles)
                 break;
         }

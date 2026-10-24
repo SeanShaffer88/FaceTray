@@ -78,6 +78,20 @@ public partial class ToastWindow : Window
         _timer.Start();
     }
 
+    /// <summary>
+    /// The morning digest (v0.3.0): same card as a single-notification
+    /// toast, but the meta line carries the overnight total. Clicking
+    /// opens the newest item, exactly like a normal toast.
+    /// </summary>
+    public void ShowDigest(NotificationItem newest, int totalCount)
+    {
+        ShowNotification(newest, 0);
+        var time = string.IsNullOrEmpty(newest.RelativeTimeText) ? "now" : newest.RelativeTimeText;
+        MetaText.Text = totalCount <= 1
+            ? $"1 new since your last digest  ·  {time}"
+            : $"{totalCount} new since your last digest  ·  {time}";
+    }
+
     private void BuildAvatar(NotificationItem item)
     {
         // Children[0] is the placeholder ellipse; drop any previous image.

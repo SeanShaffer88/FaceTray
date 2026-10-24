@@ -9,6 +9,17 @@ namespace FaceTray.Core;
 /// </summary>
 public static class AppPaths
 {
+    /// <summary>
+    /// The portable data root (v0.3.0), resolved from the marker file
+    /// next to the executable. FACETRAY_HOME still wins over portable
+    /// mode, and portable mode wins over the AppData defaults.
+    /// </summary>
+    private static string? PortableRoot =>
+        DataRoot.TryResolvePortableRoot(AppContext.BaseDirectory, File.Exists);
+
+    /// <summary>True when running in portable mode (see <see cref="DataRoot"/>).</summary>
+    public static bool IsPortable => PortableRoot is not null;
+
     public static string RootDir
     {
         get
@@ -16,6 +27,8 @@ public static class AppPaths
             var overrideDir = Environment.GetEnvironmentVariable("FACETRAY_HOME");
             if (!string.IsNullOrWhiteSpace(overrideDir))
                 return overrideDir;
+            if (PortableRoot is { } portable)
+                return portable;
             return Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
                 "FaceTray");
@@ -41,6 +54,8 @@ public static class AppPaths
             var overrideDir = Environment.GetEnvironmentVariable("FACETRAY_HOME");
             if (!string.IsNullOrWhiteSpace(overrideDir))
                 return Path.Combine(overrideDir, "WebView2");
+            if (PortableRoot is { } portable)
+                return Path.Combine(portable, "WebView2");
             return Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "FaceTray", "WebView2");
@@ -74,10 +89,26 @@ public static class AppPaths
         var overrideDir = Environment.GetEnvironmentVariable("FACETRAY_HOME");
         if (!string.IsNullOrWhiteSpace(overrideDir))
             return Path.Combine(overrideDir, $"WebView2-{profileId}");
+        if (PortableRoot is { } portable)
+            return Path.Combine(portable, $"WebView2-{profileId}");
         return Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "FaceTray", $"WebView2-{profileId}");
     }
+
+    // ---- v0.3.0 per-profile paths: pins + re-alert tracking ----
+
+    /// <summary>Pinned notification ids → when each was pinned (default profile).</summary>
+    public static string PinPath => Path.Combine(RootDir, "pin-state.json");
+
+    public static string PinPathFor(string? profileId) =>
+        PinPathIn(RootDir, profileId);
+
+    /// <summary>First-seen + re-alert tracking (default profile).</summary>
+    public static string AlertTrackPath => Path.Combine(RootDir, "alert-track.json");
+
+    public static string AlertTrackPathFor(string? profileId) =>
+        AlertTrackPathIn(RootDir, profileId);
 
     internal static string ReadStatePathIn(string rootDir, string? profileId) =>
         Path.Combine(rootDir, Profiles.IsDefault(profileId)
@@ -88,6 +119,21 @@ public static class AppPaths
         Path.Combine(rootDir, Profiles.IsDefault(profileId)
             ? "notifications-cache.json"
             : $"notifications-cache-{profileId}.json");
+
+    internal static string SnoozePathIn(string rootDir, string? profileId) =>
+        Path.Combine(rootDir, Profiles.IsDefault(profileId)
+            ? "snooze-state.json"
+            : $"snooze-state-{profileId}.json");
+
+    internal static string PinPathIn(string rootDir, string? profileId) =>
+        Path.Combine(rootDir, Profiles.IsDefault(profileId)
+            ? "pin-state.json"
+            : $"pin-state-{profileId}.json");
+
+    internal static string AlertTrackPathIn(string rootDir, string? profileId) =>
+        Path.Combine(rootDir, Profiles.IsDefault(profileId)
+            ? "alert-track.json"
+            : $"alert-track-{profileId}.json");
 }
 
 /// <summary>

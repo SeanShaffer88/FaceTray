@@ -18,8 +18,13 @@ public static class TrayIconRenderer
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool DestroyIcon(IntPtr handle);
 
-    /// <summary>Caller owns the returned icon and must dispose it (after the tray no longer uses it).</summary>
-    public static Icon Render(int unreadCount)
+    /// <summary>
+    /// Caller owns the returned icon and must dispose it (after the tray no longer uses it).
+    /// <paramref name="accentHex"/> is the ACTIVE profile's bubble colour
+    /// (v0.3.0, palette-validated in Core); anything unparseable falls back
+    /// to FaceTray red — the renderer never throws over a colour.
+    /// </summary>
+    public static Icon Render(int unreadCount, string? accentHex = null)
     {
         using var bitmap = new Bitmap(Size, Size);
         using (var g = Graphics.FromImage(bitmap))
@@ -37,14 +42,21 @@ public static class TrayIconRenderer
             using var white = new SolidBrush(Color.White);
             g.DrawString("f", fFont, white, 8.5f, 3f);
 
-            // Red counter bubble with white badge text.
+            // Counter bubble with white badge text, in the active
+            // profile's accent colour (FaceTray red #E5484D by default).
             var badge = BadgeText.For(unreadCount);
             if (badge is not null)
             {
                 var bubble = badge.Length == 1
                     ? new Rectangle(Size - 15, 0, 15, 15)
                     : new Rectangle(Size - 19, 0, 19, 15);
-                using var red = new SolidBrush(Color.FromArgb(229, 72, 77)); // FaceTray red #E5484D
+                var accent = Color.FromArgb(229, 72, 77);
+                if (!string.IsNullOrWhiteSpace(accentHex))
+                {
+                    try { accent = ColorTranslator.FromHtml(accentHex.Trim()); }
+                    catch { /* validated upstream; a bad value keeps the red */ }
+                }
+                using var red = new SolidBrush(accent);
                 FillRoundedRect(g, red, bubble, 7);
                 using var badgeFont = new Font("Segoe UI", badge.Length == 1 ? 9.5f : 8f, FontStyle.Bold, GraphicsUnit.Pixel);
                 var textSize = g.MeasureString(badge, badgeFont);

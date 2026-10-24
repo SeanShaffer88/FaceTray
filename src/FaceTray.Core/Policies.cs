@@ -132,3 +132,224 @@ public static class ExtractionHealth
         return ExtractionHealthState.Healthy;
     }
 }
+
+/// <summary>
+/// What state the Facebook session is in (v0.3.0), judged from where the
+/// notifications page ended up. A checkpoint (“confirm it's you”) is NOT
+/// a sign-out: the session exists but Facebook is holding it hostage
+/// until the user confirms in the sign-in window, and the ticker says
+/// exactly that instead of pretending the user is logged out.
+/// </summary>
+public enum SessionState
+{
+    Unknown,
+    Active,
+    SignedOut,
+    Checkpoint,
+}
+
+public static class SessionClassifier
+{
+    /// <summary>
+    /// Classifies from the page's path (never logged anywhere beyond the
+    /// resulting enum) with the title as a fallback when the path says
+    /// nothing.
+    /// </summary>
+    /// <param name="currentPath">URL path only, e.g. “/notifications” or “/checkpoint/…”.</param>
+    /// <param name="titleText">The page title.</param>
+    public static SessionState Classify(string? currentPath, string? titleText)
+    {
+        var path = (currentPath ?? "").Trim().ToLowerInvariant();
+        if (path.Length > 0)
+        {
+            if (path.Contains("/checkpoint"))
+                return SessionState.Checkpoint;
+            if (path.Contains("/login") || path.Contains("/recover"))
+                return SessionState.SignedOut;
+            // Any other Facebook path means the session carried us past
+            // the login gates.
+            return SessionState.Active;
+        }
+
+        var title = (titleText ?? "").Trim().ToLowerInvariant();
+        if (title.Contains("checkpoint") || title.Contains("confirm it's you") || title.Contains("confirm your identity"))
+            return SessionState.Checkpoint;
+        if (title.Contains("log in") || title.Contains("login"))
+            return SessionState.SignedOut;
+        return SessionState.Unknown;
+    }
+}
+
+/// <summary>
+/// Windows' shell-wide notification state, as returned by
+/// SHQueryUserNotificationState (v0.3.0). This is the signal behind
+/// Focus Assist, presentation mode and fullscreen games. Windows does
+/// NOT expose per-app or per-rule Focus Assist details to apps — the
+/// shell state is all any app can read, and FaceTray honours exactly
+/// that (see KNOWN_LIMITATIONS.md).
+/// </summary>
+public enum ShellNotificationState
+{
+    /// <summary>No user session present (e.g. the lock / logon screen).</summary>
+    NotPresent = 1,
+    /// <summary>The user is busy (legacy state).</summary>
+    Busy = 2,
+    /// <summary>A fullscreen Direct3D app (a game) is running.</summary>
+    RunningD3dFullScreen = 3,
+    /// <summary>Presentation mode is on.</summary>
+    PresentationMode = 4,
+    /// <summary>Notifications are accepted normally.</summary>
+    AcceptsNotifications = 5,
+    /// <summary>Quiet time / Focus Assist is in force.</summary>
+    QuietTime = 6,
+    /// <summary>A fullscreen immersive app is in the foreground.</summary>
+    App = 7,
+}
+
+public static class ShellNotificationGate
+{
+    /// <summary>
+    /// True only when the shell state says notifications are welcome.
+    /// An unrecognized future state allows them — suppressing pop-ups
+    /// forever on a value we do not understand would be worse than one
+    /// pop-up too many.
+    /// </summary>
+    public static bool AllowsNotifications(int rawState) =>
+        !Enum.IsDefined(typeof(ShellNotificationState), rawState)
+        || (ShellNotificationState)rawState == ShellNotificationState.AcceptsNotifications;
+
+    /// <summary>The state name for logs (state names only — never anything user-specific).</summary>
+    public static string Name(int rawState) =>
+        Enum.IsDefined(typeof(ShellNotificationState), rawState)
+            ? ((ShellNotificationState)rawState).ToString()
+            : $"Unknown({rawState})";
+}
+
+/// <summary>
+/// Whether a pop-up may fire for an item (v0.3.0): pop-ups enabled, the
+/// item's type group is in the user's “alert me about” set, and it is
+/// not quiet hours. The sound cue follows the same decision. The
+/// shell-side Focus Assist state is checked separately by the caller
+/// (it needs P/Invoke) and composes with this.
+/// </summary>
+public static class ToastDecision
+{
+    public static bool ShouldToast(AppSettings settings, NotificationItem item, DateTimeOffset now)
+    {
+        if (!settings.ShowToasts)
+            return false;
+        var groupKey = NotificationTypeGroups.Key(NotificationTypeGroups.Of(item.Type));
+        if (!settings.AlertTypeGroups.Contains(groupKey))
+            return false;
+        if (QuietHours.IsQuiet(now, settings))
+            return false;
+        return true;
+    }
+}
+
+/// <summary>
+/// The morning digest (v0.3.0): once a day, at or after the configured
+/// local time, when notifications have accumulated since the last
+/// digest. The count is of items FaceTray has SEEN arrive since then —
+/// see KNOWN_LIMITATIONS.md for the honest simplification.
+/// </summary>
+public static class DigestPolicy
+{
+    public static bool IsDue(
+        bool enabled, string? digestTimeText, DateTimeOffset now,
+        string? lastDigestDateText, int newSinceLastDigest)
+    {
+        if (!enabled || newSinceLastDigest <= 0)
+            return false;
+        var dueAt = TimeOfDayText.TryParse(digestTimeText, out var parsed)
+            ? parsed
+            : TimeSpan.FromHours(8);
+        if (now.TimeOfDay < dueAt)
+            return false;
+        if (DateOnly.TryParseExact(
+                (lastDigestDateText ?? "").Trim(), "yyyy-MM-dd",
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out var last)
+            && last >= DateOnly.FromDateTime(now.DateTime))
+            return false; // already delivered today (or the clock says a later day)
+        return true;
+    }
+}
+
+/// <summary>
+/// Renderer self-healing budget (v0.3.0): after a WebView2 renderer
+/// process failure the poller recreates its hidden browser at most
+/// <see cref="MaxRecreations"/> times per session, waiting
+/// <see cref="Backoff"/> before each attempt, then stops and says so.
+/// </summary>
+public static class RendererRetryPolicy
+{
+    public const int MaxRecreations = 3;
+    public static readonly TimeSpan Backoff = TimeSpan.FromSeconds(10);
+
+    public static bool ShouldRecreate(int recreationsSoFar) =>
+        recreationsSoFar is >= 0 and < MaxRecreations;
+}
+
+/// <summary>
+/// The ticker footer's freshness line (v0.3.0). When the last poll
+/// succeeded, news is “Updated …”; when it did not (offline, signed
+/// out, checkpoint), the cached list must never masquerade as fresh —
+/// it is labelled “Last updated … — showing saved notifications”.
+/// </summary>
+public static class StalenessText
+{
+    public static string Format(DateTimeOffset? lastSuccessUtc, DateTimeOffset nowUtc, bool isFresh)
+    {
+        if (lastSuccessUtc is null)
+            return "Not updated yet";
+        var age = nowUtc - lastSuccessUtc.Value;
+        if (age < TimeSpan.Zero)
+            age = TimeSpan.Zero;
+        var ageText =
+            age < TimeSpan.FromSeconds(60) ? "just now"
+            : age < TimeSpan.FromHours(1) ? $"{Math.Max(1, (int)Math.Round(age.TotalMinutes))} min ago"
+            : age < TimeSpan.FromDays(1) ? $"{(int)Math.Round(age.TotalHours)} h ago"
+            : $"{(int)Math.Round(age.TotalDays)} d ago";
+        if (isFresh)
+            return ageText == "just now" ? "Updated just now" : $"Updated {ageText}";
+        return ageText == "just now"
+            ? "Last updated just now — showing saved notifications"
+            : $"Last updated {ageText} — showing saved notifications";
+    }
+}
+
+/// <summary>What a key press means for the focused ticker row (v0.3.0 power keys).</summary>
+public enum RowKeyAction
+{
+    None,
+    MoveDown,
+    MoveUp,
+    Open,
+    MarkRead,
+    SnoozeOneHour,
+    TogglePin,
+    ToggleExpand,
+}
+
+/// <summary>
+/// Maps a key NAME (the WPF Key enum's name, so “J”, “Enter”, “Return”)
+/// to a row action. Kept in Core so the mapping is unit-tested; the
+/// shell resolves focus and applies the action. Active only while the
+/// ticker's search box is not focused (letters must type there).
+/// </summary>
+public static class TickerKeyMap
+{
+    public static RowKeyAction Map(string? keyName) =>
+        (keyName ?? "").Trim().ToUpperInvariant() switch
+        {
+            "J" => RowKeyAction.MoveDown,
+            "K" => RowKeyAction.MoveUp,
+            "ENTER" or "RETURN" => RowKeyAction.Open,
+            "M" => RowKeyAction.MarkRead,
+            "S" => RowKeyAction.SnoozeOneHour,
+            "P" => RowKeyAction.TogglePin,
+            "X" => RowKeyAction.ToggleExpand,
+            _ => RowKeyAction.None,
+        };
+}

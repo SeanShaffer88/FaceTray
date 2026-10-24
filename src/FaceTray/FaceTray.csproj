@@ -10,7 +10,7 @@
     <LangVersion>latest</LangVersion>
     <AssemblyName>FaceTray</AssemblyName>
     <RootNamespace>FaceTray</RootNamespace>
-    <Version>0.2.0</Version>
+    <Version>0.3.0</Version>
     <!-- Ship only English satellite assemblies: the shell UI is English-only,
          and the self-contained runtime otherwise adds a folder per culture. -->
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>

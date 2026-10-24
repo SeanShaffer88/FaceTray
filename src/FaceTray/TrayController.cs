@@ -30,6 +30,7 @@ public sealed class TrayController : IDisposable
     private IReadOnlyList<NotificationItem> _recentItems = Array.Empty<NotificationItem>();
     private string? _profileLabel;
     private string? _updateLabel;
+    private string _accentHex = AccentPalette.DefaultHex;
 
     // Wired by App.
     public Action? ToggleTickerRequested;
@@ -159,6 +160,21 @@ public sealed class TrayController : IDisposable
         catch { /* shutting down */ }
     }
 
+    /// <summary>
+    /// The active profile's bubble colour (v0.3.0). Changing it forces a
+    /// re-render even when the count itself has not moved.
+    /// </summary>
+    public void SetAccentColor(string? accentHex)
+    {
+        var normalized = AccentPalette.NormalizeOrDefault(accentHex);
+        if (_accentHex == normalized)
+            return;
+        _accentHex = normalized;
+        var count = Math.Max(0, _unreadCount);
+        _unreadCount = -1; // force the render through SetUnreadCount
+        SetUnreadCount(count);
+    }
+
     /// <summary>Re-renders the counter icon when the count changes, and refreshes the tooltip.</summary>
     public void SetUnreadCount(int unreadCount)
     {
@@ -170,7 +186,7 @@ public sealed class TrayController : IDisposable
             try
             {
                 var old = _currentIcon;
-                _currentIcon = TrayIconRenderer.Render(unreadCount);
+                _currentIcon = TrayIconRenderer.Render(unreadCount, _accentHex);
                 _icon.Icon = _currentIcon;
                 // The old icon is no longer referenced by the NotifyIcon; safe to dispose now.
                 old?.Dispose();

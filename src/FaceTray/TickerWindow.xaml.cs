@@ -5,6 +5,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
+using System.Windows.Threading;
 using FaceTray.Core;
 using Microsoft.Win32;
 using Brush = System.Windows.Media.Brush;
@@ -78,6 +79,16 @@ public partial class TickerWindow : Window
     private int _visibleCount = PageSize;
     private TickerPalette _palette = DarkPalette;
 
+    // v0.3.0: fold/expand state is UI-only (never persisted); the rows
+    // and folds of the last Refresh are kept for the power keys.
+    private readonly HashSet<string> _expandedFolds = new();
+    private readonly List<(NotificationItem Item, Border Row)> _displayedRows = new();
+    private readonly Dictionary<string, NotificationFold> _foldByPrimaryId = new();
+    private bool _hasMoreEntries;
+    private readonly DispatcherTimer _stalenessTimer;
+    private readonly DispatcherTimer _undoTimer;
+    private MarkAllReadUndo? _pendingUndo;
+
     private const int PageSize = 20;
 
     private AppSettings _displaySettings = new();
@@ -107,28 +118,42 @@ public partial class TickerWindow : Window
     public Action<NotificationItem>? MarkReadRequested;
     public Action<NotificationItem, SnoozeOption>? SnoozeRequested;
 
+    // v0.3.0 callbacks.
+    public Action<MarkAllReadUndo>? UndoMarkAllReadRequested;
+    public Action<NotificationItem>? PinToggleRequested;
+    public Action<IReadOnlyList<NotificationItem>>? OpenAllUnreadRequested;
+
     public TickerWindow(PollerService poller, DiagnosticLog? log = null)
     {
         _poller = poller;
         _log = log;
         InitializeComponent();
+        _stalenessTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
+        _stalenessTimer.Tick += (_, _) => UpdateStaleness();
+        _undoTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(6) };
+        _undoTimer.Tick += (_, _) =>
+        {
+            _undoTimer.Stop();
+            _pendingUndo = null;
+            UndoBar.Visibility = Visibility.Collapsed;
+        };
         Deactivated += (_, _) =>
         {
             if (!_menuOpen)
                 Hide();
         };
-        PreviewKeyDown += (_, e) =>
-        {
-            if (e.Key == Key.Escape)
-            {
-                Hide();
-                e.Handled = true;
-            }
-        };
+        PreviewKeyDown += OnPreviewKeyDown;
         IsVisibleChanged += (_, e) =>
         {
             if (e.NewValue is true)
+            {
+                _stalenessTimer.Start();
                 Refresh();
+            }
+            else
+            {
+                _stalenessTimer.Stop();
+            }
         };
         ApplyAppearance();
         UpdatePills();
@@ -209,6 +234,12 @@ public partial class TickerWindow : Window
         RefreshingText.Foreground = _palette.Muted;
         HealthBanner.Background = _palette.BannerBackground;
         HealthBannerText.Foreground = _palette.BannerText;
+        SessionBanner.Background = _palette.BannerBackground;
+        SessionBannerText.Foreground = _palette.BannerText;
+        CheckpointText.Foreground = _palette.Text;
+        UndoBar.Background = _palette.Hover;
+        UndoText.Foreground = _palette.Text;
+        StalenessLine.Foreground = _palette.Muted;
         ShowMoreButton.Background = _palette.Hover;
         ShowMoreButton.Foreground = _palette.Text;
         FooterButton.Background = _palette.Hover;
@@ -256,26 +287,50 @@ public partial class TickerWindow : Window
         var hidden = _displaySettings.HiddenTypeGroups.ToHashSet();
         var filtered = NotificationVisibility.FilterForDisplay(
             _poller.Items, _searchQuery, hidden, _unreadOnly);
-        var slice = filtered.Take(_visibleCount).ToList();
+
+        // v0.3.0 pipeline: pinned items split off into their own section;
+        // the rest collapse repeats (NotificationFolding) AFTER the
+        // search/type filters, BEFORE sectioning. Pagination counts
+        // ENTRIES — a fold of five is one entry.
+        var entries = new List<NotificationFold>();
+        foreach (var item in filtered)
+            if (item.IsPinned)
+                entries.Add(new NotificationFold(item, Array.Empty<NotificationItem>()));
+        entries.AddRange(NotificationFolding.Fold(
+            filtered.Where(i => !i.IsPinned).ToList(), pinnedIds: null));
+        var slice = entries.Take(_visibleCount).ToList();
+        _hasMoreEntries = entries.Count > slice.Count;
+        _foldByPrimaryId.Clear();
+        foreach (var fold in entries)
+            _foldByPrimaryId[fold.Primary.Id] = fold;
+        _displayedRows.Clear();
 
         SignInPanel.Visibility = Visibility.Collapsed;
         LoadingPanel.Visibility = Visibility.Collapsed;
         CaughtUpPanel.Visibility = Visibility.Collapsed;
         ErrorPanel.Visibility = Visibility.Collapsed;
+        CheckpointPanel.Visibility = Visibility.Collapsed;
         ListScroll.Visibility = Visibility.Collapsed;
         ShowMoreButton.Visibility = Visibility.Collapsed;
         HealthBanner.Visibility =
             _poller.HealthWarning && _poller.State != PollerState.NotSignedIn
                 ? Visibility.Visible : Visibility.Collapsed;
+        SessionBanner.Visibility =
+            _poller.State == PollerState.Checkpoint && _poller.Items.Count > 0
+                ? Visibility.Visible : Visibility.Collapsed;
         RefreshingText.Visibility =
             _poller.State == PollerState.Loading && _poller.Items.Count > 0
                 ? Visibility.Visible : Visibility.Collapsed;
         FooterButton.IsEnabled = true;
+        UpdateStaleness();
 
         switch (_poller.State)
         {
             case PollerState.NotSignedIn:
                 SignInPanel.Visibility = Visibility.Visible;
+                return;
+            case PollerState.Checkpoint when _poller.Items.Count == 0:
+                CheckpointPanel.Visibility = Visibility.Visible;
                 return;
             case PollerState.Error when _poller.Items.Count == 0:
                 ErrorText.Text = _poller.LastError ?? "Something went wrong reading Facebook.";
@@ -298,19 +353,72 @@ public partial class TickerWindow : Window
         }
 
         ItemsPanel.Children.Clear();
-        foreach (var group in NotificationGrouping.GroupForDisplay(slice, DateTimeOffset.Now))
+        // Sections in Facebook's order — Pinned, then Today, then
+        // Earlier — bucketed like NotificationGrouping does (a section
+        // never re-opens), order preserved within each bucket.
+        var sections = new[]
         {
-            ItemsPanel.Children.Add(BuildSectionHeader(group.Title));
-            foreach (var item in group.Items)
-                ItemsPanel.Children.Add(BuildRow(item));
+            ("Pinned", slice.Where(f => f.Primary.IsPinned).ToList()),
+            (NotificationGrouping.TodayTitle, slice.Where(f =>
+                !f.Primary.IsPinned && NotificationGrouping.IsToday(f.Primary.RelativeTimeText)).ToList()),
+            (NotificationGrouping.EarlierTitle, slice.Where(f =>
+                !f.Primary.IsPinned && !NotificationGrouping.IsToday(f.Primary.RelativeTimeText)).ToList()),
+        };
+        foreach (var (title, folds) in sections)
+        {
+            if (folds.Count == 0)
+                continue;
+            ItemsPanel.Children.Add(BuildSectionHeader(title));
+            foreach (var fold in folds)
+            {
+                var row = BuildRow(fold.Primary, fold, isFoldedChild: false);
+                _displayedRows.Add((fold.Primary, row));
+                ItemsPanel.Children.Add(row);
+                if (fold.IsGroup && _expandedFolds.Contains(fold.Primary.Id))
+                {
+                    foreach (var child in fold.Folded)
+                    {
+                        var childRow = BuildRow(child, fold, isFoldedChild: true);
+                        _displayedRows.Add((child, childRow));
+                        ItemsPanel.Children.Add(childRow);
+                    }
+                }
+            }
         }
         ListScroll.Visibility = Visibility.Visible;
-        if (filtered.Count > slice.Count)
+        if (_hasMoreEntries)
             ShowMoreButton.Visibility = Visibility.Visible;
         if (keepScroll)
             ListScroll.ScrollToVerticalOffset(scrollOffset);
         else
             ListScroll.ScrollToTop();
+    }
+
+    /// <summary>The footer's freshness line (v0.3.0), from the poller's last successful poll.</summary>
+    private void UpdateStaleness()
+    {
+        var isFresh = _poller.State is PollerState.Ready or PollerState.Loading;
+        StalenessLine.Text = FaceTray.Core.StalenessText.Format(
+            _poller.LastSuccessfulPollUtc, DateTimeOffset.UtcNow, isFresh);
+    }
+
+    /// <summary>Shows the “Mark all read” undo bar for about six seconds (v0.3.0).</summary>
+    public void ShowUndoBar(MarkAllReadUndo undo)
+    {
+        _pendingUndo = undo;
+        UndoBar.Visibility = Visibility.Visible;
+        _undoTimer.Stop();
+        _undoTimer.Start();
+    }
+
+    private void OnUndoClicked(object sender, RoutedEventArgs e)
+    {
+        _undoTimer.Stop();
+        UndoBar.Visibility = Visibility.Collapsed;
+        var undo = _pendingUndo;
+        _pendingUndo = null;
+        if (undo is not null)
+            UndoMarkAllReadRequested?.Invoke(undo);
     }
 
     private UIElement BuildSectionHeader(string title)
@@ -346,21 +454,26 @@ public partial class TickerWindow : Window
         return grid;
     }
 
-    private UIElement BuildRow(NotificationItem item)
+    private Border BuildRow(NotificationItem item, NotificationFold? fold, bool isFoldedChild)
     {
         var row = new Border
         {
             CornerRadius = new CornerRadius(6),
             Padding = new Thickness(8, 6 * Scale, 8, 6 * Scale),
-            Margin = new Thickness(0, 1, 0, 1),
+            Margin = new Thickness(isFoldedChild ? 18 : 0, 1, 0, 1),
             Background = Brushes.Transparent,
             Focusable = true,
             Cursor = Cursors.Hand,
             MinHeight = 68 * Scale,
+            Tag = item,
         };
         AutomationProperties.SetName(row,
             $"{item.Text}{(string.IsNullOrEmpty(item.RelativeTimeText) ? "" : ", " + item.RelativeTimeText)}" +
-            (item.IsUnread ? ", unread" : ""));
+            (item.IsUnread ? ", unread" : "") +
+            (item.IsPinned ? ", pinned" : ""));
+        var toolTip = BuildToolTip(item);
+        if (toolTip.Length > 0)
+            row.ToolTip = toolTip;
 
         var grid = new Grid();
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(64) });
@@ -402,17 +515,48 @@ public partial class TickerWindow : Window
         Grid.SetColumn(textStack, 1);
         grid.Children.Add(textStack);
 
-        // Actions column: unread dot, plus hover/focus actions (mark read, snooze).
+        // Actions column: fold chip (always visible on a group's primary),
+        // unread dot, plus hover/focus actions (pin, mark read, snooze).
         var actions = new StackPanel
         {
             Orientation = System.Windows.Controls.Orientation.Horizontal,
             VerticalAlignment = VerticalAlignment.Center,
         };
+        if (fold is { IsGroup: true } group && !isFoldedChild)
+        {
+            var expanded = _expandedFolds.Contains(item.Id);
+            var chip = new Button
+            {
+                Content = $"×{group.Count}",
+                Padding = new Thickness(7, 1, 7, 1),
+                Margin = new Thickness(0, 0, 4, 0),
+                FontSize = 12,
+                Background = _palette.Hover,
+                Foreground = _palette.Text,
+                BorderThickness = new Thickness(0),
+                Cursor = Cursors.Hand,
+                ToolTip = expanded
+                    ? "Hide the similar notifications"
+                    : $"Show the other {group.Count - 1} similar notification(s)",
+            };
+            AutomationProperties.SetName(chip,
+                expanded ? "Hide similar notifications" : "Show similar notifications");
+            chip.PreviewMouseLeftButtonUp += (_, e) =>
+            {
+                // Handled here so the click never bubbles into the row's open action.
+                e.Handled = true;
+                ToggleFold(item.Id);
+            };
+            actions.Children.Add(chip);
+        }
         var hoverActions = new StackPanel
         {
             Orientation = System.Windows.Controls.Orientation.Horizontal,
             Visibility = Visibility.Collapsed,
         };
+        hoverActions.Children.Add(ActionButton("\U0001F4CC", // 📌 pushpin
+            item.IsPinned ? "Unpin" : "Pin",
+            () => PinToggleRequested?.Invoke(item)));
         if (item.IsUnread)
         {
             hoverActions.Children.Add(ActionButton("✓", "Mark as read",
@@ -530,13 +674,144 @@ public partial class TickerWindow : Window
     {
         var menu = new ContextMenu();
         menu.Items.Add(MenuItem("Open in browser", () => NotificationClicked?.Invoke(item)));
+        menu.Items.Add(MenuItem("Copy link", () =>
+        {
+            // UI-side copy of the very link the row opens (never logged).
+            try { System.Windows.Clipboard.SetText(item.Href); }
+            catch { /* the clipboard was busy — copying is a nicety, not a failure */ }
+        }));
         if (item.IsUnread)
             menu.Items.Add(MenuItem("Mark as read", () => MarkReadRequested?.Invoke(item)));
         menu.Items.Add(new Separator());
         menu.Items.Add(MenuItem("Snooze 1 hour", () => SnoozeRequested?.Invoke(item, SnoozeOption.OneHour)));
         menu.Items.Add(MenuItem("Snooze until tomorrow", () => SnoozeRequested?.Invoke(item, SnoozeOption.UntilTomorrow)));
+        menu.Items.Add(new Separator());
+        menu.Items.Add(MenuItem(item.IsPinned ? "Unpin" : "Pin",
+            () => PinToggleRequested?.Invoke(item)));
         TrackMenu(menu);
         return menu;
+    }
+
+    private void ToggleFold(string primaryId)
+    {
+        if (!_expandedFolds.Add(primaryId))
+            _expandedFolds.Remove(primaryId);
+        Refresh(keepScroll: true);
+    }
+
+    /// <summary>
+    /// The row tooltip: the exact time when Facebook exposed one
+    /// (“Tue 21 Oct 2026, 16:32 (3h ago)”), else just the relative label.
+    /// </summary>
+    private static string BuildToolTip(NotificationItem item)
+    {
+        if (item.TimestampUtc is { } ts)
+        {
+            var exact = $"{ts.ToLocalTime():ddd d MMM yyyy, HH:mm}";
+            if (string.IsNullOrEmpty(item.RelativeTimeText))
+                return exact;
+            var rel = item.RelativeTimeText;
+            // Token labels (“3h”, “26m”) read “3h ago”; word labels
+            // (“Just now”, “Yesterday”) stand as they are.
+            return rel.Contains(' ') ? $"{exact} ({rel})" : $"{exact} ({rel} ago)";
+        }
+        return item.RelativeTimeText ?? "";
+    }
+
+    // ---------- power keys (v0.3.0) ----------
+
+    /// <summary>
+    /// j/k move between rows, Enter opens, m marks read, s snoozes an
+    /// hour, p pins/unpins, x expands a folded group — active only while
+    /// the search box is NOT focused (letters must type there). The key
+    /// mapping itself is Core logic (TickerKeyMap) and unit-tested.
+    /// </summary>
+    private void OnPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
+            Hide();
+            e.Handled = true;
+            return;
+        }
+        if (SearchBox.IsKeyboardFocused)
+            return;
+        if (Keyboard.FocusedElement is Button && e.Key is Key.Enter or Key.Space)
+            return; // focused buttons keep their own Enter/Space behaviour
+
+        var action = TickerKeyMap.Map(e.Key.ToString());
+        if (action == RowKeyAction.None)
+            return;
+
+        var focused = Keyboard.FocusedElement as DependencyObject;
+        var current = _displayedRows.FirstOrDefault(
+            r => focused is not null && (ReferenceEquals(r.Row, focused) || r.Row.IsAncestorOf(focused)));
+
+        switch (action)
+        {
+            case RowKeyAction.MoveDown:
+                MoveRowFocus(+1);
+                e.Handled = true;
+                break;
+            case RowKeyAction.MoveUp:
+                MoveRowFocus(-1);
+                e.Handled = true;
+                break;
+            case RowKeyAction.Open when current.Item is not null:
+                NotificationClicked?.Invoke(current.Item);
+                e.Handled = true;
+                break;
+            case RowKeyAction.MarkRead when current.Item is { IsUnread: true }:
+                MarkReadRequested?.Invoke(current.Item);
+                e.Handled = true;
+                break;
+            case RowKeyAction.SnoozeOneHour when current.Item is not null:
+                SnoozeRequested?.Invoke(current.Item, SnoozeOption.OneHour);
+                e.Handled = true;
+                break;
+            case RowKeyAction.TogglePin when current.Item is not null:
+                PinToggleRequested?.Invoke(current.Item);
+                e.Handled = true;
+                break;
+            case RowKeyAction.ToggleExpand when current.Item is not null:
+                if (_foldByPrimaryId.TryGetValue(current.Item.Id, out var fold) && fold.IsGroup)
+                    ToggleFold(current.Item.Id);
+                e.Handled = true;
+                break;
+        }
+    }
+
+    private void MoveRowFocus(int delta)
+    {
+        if (_displayedRows.Count == 0)
+            return;
+        var focused = Keyboard.FocusedElement as DependencyObject;
+        var index = _displayedRows.FindIndex(
+            r => focused is not null && (ReferenceEquals(r.Row, focused) || r.Row.IsAncestorOf(focused)));
+        if (index < 0)
+        {
+            FocusRow(delta > 0 ? 0 : _displayedRows.Count - 1);
+            return;
+        }
+        var next = Math.Clamp(index + delta, 0, _displayedRows.Count - 1);
+        if (next == index && delta > 0 && _hasMoreEntries)
+        {
+            // At the last rendered row with more entries behind “Show
+            // more”: page them in, then land on the next row.
+            _visibleCount += PageSize;
+            Refresh(keepScroll: true);
+            Dispatcher.BeginInvoke(() => FocusRow(Math.Min(index + 1, _displayedRows.Count - 1)));
+            return;
+        }
+        FocusRow(next);
+    }
+
+    private void FocusRow(int index)
+    {
+        if (index < 0 || index >= _displayedRows.Count)
+            return;
+        _displayedRows[index].Row.Focus();
+        _displayedRows[index].Row.BringIntoView();
     }
 
     private void OpenSnoozeMenu(Button target, NotificationItem item)
@@ -719,16 +994,51 @@ public partial class TickerWindow : Window
         var menu = new ContextMenu();
         menu.Items.Add(MenuItem("Refresh Now", () => RefreshRequested?.Invoke()));
         menu.Items.Add(MenuItem("Mark all read", () => MarkAllReadRequested?.Invoke()));
+        var unreadItems = _poller.Items.Where(i => i.IsUnread).ToList();
+        var openAll = MenuItem($"Open all unread in browser ({unreadItems.Count})",
+            () => OnOpenAllUnread(unreadItems));
+        openAll.IsEnabled = unreadItems.Count > 0;
+        menu.Items.Add(openAll);
         menu.Items.Add(new Separator());
         menu.Items.Add(MenuItem("Settings…", () => SettingsRequested?.Invoke()));
         menu.Items.Add(MenuItem(_poller.IsPaused ? "Resume polling" : "Pause polling",
             () => TogglePauseRequested?.Invoke()));
         menu.Items.Add(new Separator());
+        menu.Items.Add(new MenuItem
+        {
+            Header = "Keys: j/k move · Enter open · m read · s snooze · p pin · x expand",
+            IsEnabled = false,
+        });
         menu.Items.Add(MenuItem("Exit FaceTray", () => ExitRequested?.Invoke()));
         menu.PlacementTarget = MenuButton;
         menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
         TrackMenu(menu);
         menu.IsOpen = true;
+    }
+
+    /// <summary>
+    /// “Open all unread”: every unread item of the ACTIVE profile,
+    /// regardless of the ticker's search/filters (v0.3.0) — with a
+    /// confirmation once it would open more than a handful of tabs.
+    /// Opening marks them read (App's handler does both).
+    /// </summary>
+    private void OnOpenAllUnread(IReadOnlyList<NotificationItem> unreadItems)
+    {
+        if (unreadItems.Count == 0)
+            return;
+        if (unreadItems.Count > 5)
+        {
+            var answer = System.Windows.MessageBox.Show(
+                $"Open {unreadItems.Count} notifications in your browser?\n\n" +
+                "This opens every unread notification for the active account — regardless of the " +
+                "ticker's search and filters — and marks them all read.",
+                "FaceTray — Open all unread",
+                MessageBoxButton.OKCancel, MessageBoxImage.Question);
+            if (answer != MessageBoxResult.OK)
+                return;
+        }
+        Hide();
+        OpenAllUnreadRequested?.Invoke(unreadItems);
     }
 
     private static MenuItem MenuItem(string header, Action action)

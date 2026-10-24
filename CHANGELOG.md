@@ -2,6 +2,37 @@
 
 All notable changes to FaceTray are recorded here. Versions follow semantic versioning.
 
+## [0.3.0] — 2026-10-24
+
+The second “all 20 enhancements” release: pins and folded repeats for triage, alert rules that respect you (per-type rules, Focus Assist, one gentle re-alert, a morning digest), three fallback extraction strategies with session-state detection and a self-healing renderer, a full backup/restore, portable mode, and a native ARM64 build. **All v0.3.0 runtime behaviour is Unverified** — it has been built, unit-tested (265 Core tests) and CI-gated, but has not run on a real Windows desktop yet; it will be verified in the same on-machine pass as v0.2.0 (RELEASE_CHECKLIST.md).
+
+### Reading & triage
+- **Pins** — pin a notification (hover 📌, right-click, or the `p` key) and it lives in a Pinned section above Today, exempt from the automatic history prune.
+- **Undo mark-all-read** — after “Mark all read”, the ticker footer offers Undo for a few seconds; it restores exactly the notifications that action newly marked.
+- **Row context menu, consolidated** — Open in browser / Copy link / Mark as read / Snooze 1 hour / Snooze until tomorrow / Pin or Unpin.
+- **Power keys** — with the ticker open and the search box not focused: `j`/`k` move between rows, Enter opens, `m` marks read, `s` snoozes an hour, `p` pins/unpins, `x` expands a folded group. The list is shown in the `···` menu.
+- **Exact-time tooltips** — when Facebook exposes a machine-readable time for a row, hovering shows it (“Wed 21 Oct 2026, 16:32 (3h ago)”); otherwise the relative label stands alone.
+- **Open all unread** — the `···` menu can open every unread notification of the active account in the browser (with a confirmation past five, which says it ignores the ticker's filters) and marks them read.
+- **Collapse repeats** — repeat notifications about the same post fold into one row with a ×N chip; click the chip or press `x` to expand them inline.
+
+### Alerts
+- **Per-type alert rules** — Settings → “Alert me about”: pop-ups only for the kinds you tick (comments & mentions, likes & reactions, birthdays, everything else). The pop-up sound follows the same decision.
+- **Focus Assist respected** — when Windows says notifications are not welcome (Focus Assist, presentation mode, a fullscreen game), pop-ups and sounds hold off while counting continues.
+- **One gentle re-alert** — a comment or mention still unread after 30 minutes earns exactly one more pop-up. Never twice for the same notification.
+- **Morning digest** — optional: one pop-up at your chosen time summarising what arrived since the last digest, instead of an overnight drip-feed.
+- **Per-account bubble colour** — each account picks its tray counter colour (red, orange, green, blue, purple, pink), so the tray tells you which account has news.
+
+### Robustness
+- **Fallback extraction strategies** — the reader now tries three semantic strategies in order (notification-link anchors, then post/story permalinks carrying a time label, then structured rows), so one Facebook markup change has to break all three. Settings → Diagnostics reports which strategy is in use and how often each has fired.
+- **Session-state detection** — FaceTray now tells a Facebook “confirm it's you” checkpoint apart from a sign-out, and the ticker says exactly that (with a button into the sign-in window) instead of pretending you are logged out.
+- **Renderer self-healing** — if Facebook's embedded view crashes, FaceTray rebuilds it and resumes polling (up to three times per session, with a pause between attempts), keeping your sign-in.
+- **Staleness line** — the ticker footer always says how fresh the list is (“Updated 5 min ago”, or “Last updated 26 min ago — showing saved notifications” when it could not refresh).
+
+### Data & platform
+- **Full backup & restore** — Settings can save one backup file holding the settings plus every account's read marks, snoozes, pins and cached notifications, and restore it (with a confirmation; FaceTray restarts to apply). Backups never contain your Facebook sign-in.
+- **Portable mode** — create an empty `portable.txt` next to `FaceTray.exe` and everything (settings, history, sign-ins) lives in a `FaceTray-data` folder beside it: run FaceTray from a USB stick and take it with you.
+- **ARM64 build** — a native win-arm64 build joins CI and the downloads, for Snapdragon and other ARM64 Windows machines.
+
 ## [0.2.0] — 2026-10-24
 
 The “all 20 enhancements” release: a deeper, quieter, more capable ticker, multiple accounts, and the safety nets for the day Facebook changes its layout. **All v0.2.0 runtime behaviour is Unverified** — it has been built, unit-tested (197 Core tests) and CI-gated, but none of the new behaviour has run on a real Windows desktop yet; RELEASE_CHECKLIST.md carries the on-machine pass that promotes it.

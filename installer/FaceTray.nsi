@@ -1,8 +1,9 @@
 ; FaceTray installer (NSIS) — per-user install, no admin required.
 ;
 ; Build (from the repo root, with the verified release publish staged):
-;   makensis /DVERSION=0.2.0 /DSTAGE=<dir containing the publish output> installer\FaceTray.nsi
-; Produces FaceTray-Setup-v<VERSION>-x64.exe next to this script.
+;   makensis /DVERSION=0.3.0 /DSTAGE=<dir containing the publish output> /DARCH=x64 installer\FaceTray.nsi
+; Produces FaceTray-Setup-v<VERSION>-<ARCH>.exe next to this script.
+; ARCH defaults to x64; pass /DARCH=arm64 with an ARM64 publish staged.
 ;
 ; Design notes (see DECISIONS.md, 2026-10-23):
 ; - Per-user install to %LOCALAPPDATA%\Programs\FaceTray, HKCU uninstall
@@ -13,7 +14,10 @@
 ;   "also delete" prompt.
 
 !ifndef VERSION
-  !define VERSION "0.2.0"
+  !define VERSION "0.3.0"
+!endif
+!ifndef ARCH
+  !define ARCH "x64"
 !endif
 !ifndef STAGE
   !error "Pass /DSTAGE=<publish output dir>"
@@ -21,7 +25,7 @@
 
 Unicode true
 Name "FaceTray"
-OutFile "FaceTray-Setup-v${VERSION}-x64.exe"
+OutFile "FaceTray-Setup-v${VERSION}-${ARCH}.exe"
 InstallDir "$LOCALAPPDATA\Programs\FaceTray"
 InstallDirRegKey HKCU "Software\FaceTray" "InstallDir"
 RequestExecutionLevel user

@@ -28,4 +28,15 @@ public static class WebViewEnv
             return _task;
         }
     }
+
+    /// <summary>
+    /// Forgets the cached environment (v0.3.0 renderer self-healing): when
+    /// the poller recreates its browser after a renderer process failure,
+    /// the next GetAsync builds a fresh environment over the same folder.
+    /// </summary>
+    public static void Reset()
+    {
+        lock (Gate)
+            _task = null;
+    }
 }

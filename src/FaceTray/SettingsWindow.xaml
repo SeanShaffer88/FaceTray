@@ -40,6 +40,19 @@
                         <TextBox x:Name="QuietEndBox" Width="64" Text="07:00" AutomationProperties.Name="Quiet hours end (24-hour time)"/>
                         <TextBlock Margin="8,2,0,0" FontSize="12" Foreground="{StaticResource MutedBrush}" Text="(24-hour times; the counter keeps working)"/>
                     </StackPanel>
+                    <TextBlock Margin="0,14,0,0" Text="Alert me about" Foreground="{StaticResource TextBrush}"/>
+                    <TextBlock Margin="0,4,0,0" FontSize="12" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}"
+                               Text="Pop-ups (and the one gentle re-alert for an unread comment or mention) only fire for the kinds you tick. The ticker and the counter are unaffected."/>
+                    <CheckBox x:Name="AlertCommentsMentionsBox" Margin="0,8,0,0" Foreground="{StaticResource TextBrush}" Content="Comments and mentions"/>
+                    <CheckBox x:Name="AlertLikesBox" Margin="0,6,0,0" Foreground="{StaticResource TextBrush}" Content="Likes and reactions"/>
+                    <CheckBox x:Name="AlertBirthdaysBox" Margin="0,6,0,0" Foreground="{StaticResource TextBrush}" Content="Birthdays"/>
+                    <CheckBox x:Name="AlertOtherBox" Margin="0,6,0,0" Foreground="{StaticResource TextBrush}" Content="Everything else"/>
+                    <CheckBox x:Name="DigestBox" Margin="0,14,0,0" Foreground="{StaticResource TextBrush}"
+                              Content="Morning digest — one pop-up summarising what arrived overnight, at:"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                        <TextBox x:Name="DigestTimeBox" Width="64" Text="08:00" AutomationProperties.Name="Morning digest time (24-hour)"/>
+                        <TextBlock Margin="8,2,0,0" FontSize="12" Foreground="{StaticResource MutedBrush}" Text="(24-hour time; only on days something new arrived)"/>
+                    </StackPanel>
                     <CheckBox x:Name="GlobalHotkeyBox" Margin="0,10,0,0" Foreground="{StaticResource TextBrush}"
                               Content="Ctrl+Shift+F opens the ticker from anywhere"/>
                 </StackPanel>
@@ -113,6 +126,8 @@
                         <Button x:Name="RemoveProfileButton" Margin="6,0,0,0" Padding="10,4" Content="Remove" Click="OnRemoveProfile"/>
                         <Button x:Name="SwitchProfileButton" Margin="6,0,0,0" Padding="10,4" Content="Switch to selected" Click="OnSwitchProfile"/>
                     </StackPanel>
+                    <TextBlock Margin="0,12,0,0" Text="Tray counter bubble colour for the selected account" Foreground="{StaticResource TextBrush}"/>
+                    <ComboBox x:Name="AccentBox" Margin="0,6,0,0" AutomationProperties.Name="Tray counter bubble colour for the selected account"/>
                 </StackPanel>
             </Border>
 
@@ -135,12 +150,16 @@
                 <StackPanel>
                     <TextBlock Text="Your data" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
                     <TextBlock Margin="0,4,0,0" FontSize="12" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}"
-                               Text="FaceTray stores its settings, the notifications it saw, and which ones you've read — all on this PC only. Clear data removes the active account's cache, read marks and snoozes. To fully sign out an account, also delete its Facebook session folder shown below after closing FaceTray (deleting it while FaceTray runs isn't safe)."/>
+                               Text="FaceTray stores its settings, the notifications it saw, and which ones you've read — all on this PC only. Clear data removes the active account's cache, read marks, snoozes and pins. A backup saves the settings plus every account's read marks, snoozes, pins and cached notifications to one file; restoring replaces them and restarts FaceTray. Backups never contain your Facebook sign-in — no backup can sign anyone in. To fully sign out an account, also delete its Facebook session folder shown below after closing FaceTray (deleting it while FaceTray runs isn't safe)."/>
                     <TextBlock x:Name="ProfilePathText" Margin="0,6,0,0" FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}"/>
                     <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                         <Button Padding="12,5" Content="Export settings…" Click="OnExportSettings"/>
                         <Button Margin="6,0,0,0" Padding="12,5" Content="Import settings…" Click="OnImportSettings"/>
                         <Button Margin="6,0,0,0" Padding="12,5" Content="Clear data…" Click="OnClearData"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                        <Button Padding="12,5" Content="Back up everything…" Click="OnBackup"/>
+                        <Button Margin="6,0,0,0" Padding="12,5" Content="Restore backup…" Click="OnRestoreBackup"/>
                     </StackPanel>
                 </StackPanel>
             </Border>

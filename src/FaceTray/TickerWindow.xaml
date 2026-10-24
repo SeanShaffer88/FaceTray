@@ -79,8 +79,33 @@
                            Text="Facebook's layout may have changed — some notifications might be missing."/>
             </Border>
 
-            <!-- Footer stack: Show more + the Facebook page button -->
+            <!-- Session checkpoint banner (v0.3.0): shown above cached rows -->
+            <Border x:Name="SessionBanner" DockPanel.Dock="Top" Visibility="Collapsed"
+                    Margin="4,0,4,6" CornerRadius="6" Padding="10,7" Background="#4A3A12">
+                <StackPanel>
+                    <TextBlock x:Name="SessionBannerText" TextWrapping="Wrap" FontSize="12.5" Foreground="#F5C542"
+                               Text="Facebook needs you to confirm it's you before FaceTray can keep reading notifications."/>
+                    <Button x:Name="SessionConfirmButton" Margin="0,8,0,0" Padding="12,5" HorizontalAlignment="Left" Cursor="Hand"
+                            Background="#2D88FF" Foreground="White" BorderThickness="0" FontSize="13"
+                            Content="Confirm it's you" AutomationProperties.Name="Confirm it is you on Facebook"
+                            Click="OnSignIn"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Footer stack: undo bar + staleness + Show more + the Facebook page button -->
             <StackPanel DockPanel.Dock="Bottom">
+                <Border x:Name="UndoBar" Visibility="Collapsed" Margin="0,8,0,0" CornerRadius="6"
+                        Padding="10,6" Background="#3A3B3C">
+                    <Grid>
+                        <TextBlock x:Name="UndoText" Text="All marked read." Foreground="#E4E6EB" FontSize="13"
+                                   VerticalAlignment="Center"/>
+                        <Button x:Name="UndoButton" HorizontalAlignment="Right" Padding="10,2" Cursor="Hand"
+                                Background="Transparent" Foreground="#2D88FF" BorderThickness="0" FontSize="13"
+                                Content="Undo" AutomationProperties.Name="Undo mark all read"
+                                Click="OnUndoClicked"/>
+                    </Grid>
+                </Border>
+                <TextBlock x:Name="StalenessLine" Margin="4,8,4,0" FontSize="12" Foreground="#B0B3B8" Text=""/>
                 <Button x:Name="ShowMoreButton" Margin="0,8,0,0" Padding="0,7" Cursor="Hand" Visibility="Collapsed"
                         Background="#3A3B3C" Foreground="#E4E6EB" BorderThickness="0" FontSize="13"
                         Content="Show more" AutomationProperties.Name="Show more notifications"
@@ -130,6 +155,15 @@
                             Background="#3A3B3C" Foreground="White" BorderThickness="0"
                             Content="Retry" AutomationProperties.Name="Retry loading notifications"
                             Click="OnRetry"/>
+                </StackPanel>
+
+                <StackPanel x:Name="CheckpointPanel" Visibility="Collapsed" Margin="8,18" VerticalAlignment="Top">
+                    <TextBlock x:Name="CheckpointText" TextWrapping="Wrap" Foreground="#E4E6EB" FontSize="14"
+                               Text="Facebook needs you to confirm it's you. Confirm in the sign-in window, and FaceTray will pick up right where it left off."/>
+                    <Button x:Name="CheckpointButton" Margin="0,12,0,0" Padding="14,7" HorizontalAlignment="Left" Cursor="Hand"
+                            Background="#2D88FF" Foreground="White" BorderThickness="0"
+                            Content="Confirm it's you" AutomationProperties.Name="Confirm it is you on Facebook"
+                            Click="OnSignIn"/>
                 </StackPanel>
 
                 <ScrollViewer x:Name="ListScroll" VerticalScrollBarVisibility="Auto" MaxHeight="470">

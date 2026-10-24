@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Media;
 using System.Net.Http;
@@ -36,8 +37,11 @@ public partial class App : System.Windows.Application
 
     private LocalReadStore _readStore = new(AppPaths.ReadStatePath);
     private SnoozeStore _snoozeStore = new(AppPaths.SnoozePath);
+    private PinStore _pinStore = new(AppPaths.PinPath);
+    private AlertTrackStore _alertTrackStore = new(AppPaths.AlertTrackPath);
     private string _cachePath = AppPaths.CachePath;
     private string _sessionDir = AppPaths.WebViewDataDir;
+    private string _lastGateState = "";
 
     private PollerService? _poller;
     private TrayController? _tray;
@@ -109,7 +113,7 @@ public partial class App : System.Windows.Application
         ProcessPendingProfileDeletions();
         BuildProfileContext();
 
-        _poller = new PollerService(Settings, Log, _readStore, _snoozeStore, _cachePath, _sessionDir, Dispatcher);
+        _poller = new PollerService(Settings, Log, _readStore, _snoozeStore, _pinStore, _alertTrackStore, _cachePath, _sessionDir, Dispatcher);
         _tray = new TrayController(Log, Dispatcher);
         _ticker = new TickerWindow(_poller, Log) { DisplaySettings = Settings };
         _hotkey = new HotkeyManager(Log);
@@ -117,6 +121,7 @@ public partial class App : System.Windows.Application
         Wire();
 
         _tray.Build();
+        _tray.SetAccentColor(Settings.ActiveProfile.AccentColor);
         _tray.SetPaused(_poller.IsPaused);
         RefreshTrayProfileLabel();
         SyncHotkey();
@@ -150,12 +155,20 @@ public partial class App : System.Windows.Application
         _readStore.Load();
         _snoozeStore = new SnoozeStore(AppPaths.SnoozePathFor(id));
         _snoozeStore.Load();
+        _pinStore = new PinStore(AppPaths.PinPathFor(id));
+        _pinStore.Load();
+        _alertTrackStore = new AlertTrackStore(AppPaths.AlertTrackPathFor(id));
+        _alertTrackStore.Load();
 
         var now = DateTimeOffset.UtcNow;
         if (_snoozeStore.PruneExpired(now) > 0)
             _snoozeStore.Save();
         if (_readStore.PruneOlderThan(now.AddDays(-Settings.HistoryKeepDays)) > 0)
             _readStore.Save();
+        // Re-alert tracking is pruned with the history window (pins are
+        // deliberately NOT pruned — they are the user's own keepsakes).
+        if (_alertTrackStore.PruneOlderThan(now.AddDays(-Settings.HistoryKeepDays)) > 0)
+            _alertTrackStore.Save();
     }
 
     private void Wire()
@@ -173,12 +186,38 @@ public partial class App : System.Windows.Application
                 _ticker.Refresh();
         };
         _poller.NewItemsArrived += newItems => OnNewItems(newItems);
+        _poller.RealertReady += item =>
+        {
+            // The poller already applied the toast decision (type rules +
+            // quiet hours); compose the shell's Focus Assist state here.
+            if (FocusAssistAllows())
+            {
+                _toast ??= CreateToast();
+                _toast.ShowNotification(item, 0);
+                PlaySoundIfEnabled();
+                Log.Info("Re-alerted one still-unread comment/mention notification");
+            }
+            _poller.NoteRealertDelivered(item.Id);
+        };
+        _poller.DigestReady += (count, newest) =>
+        {
+            Settings.LastDigestDate = DateTime.Now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            SettingsStore.Save(AppPaths.SettingsPath, Settings);
+            _poller.NoteDigestSent();
+            Log.Info($"Morning digest due: {count} new since the last digest");
+            if (newest is not null && Settings.ShowToasts && FocusAssistAllows())
+            {
+                _toast ??= CreateToast();
+                _toast.ShowDigest(newest, count);
+                PlaySoundIfEnabled();
+            }
+        };
 
         _tray.ToggleTickerRequested = () => _ticker.ToggleTicker();
         _tray.OpenFacebookRequested = () => BrowserOpener.Open(UrlGuard.FacebookHomeUrl, Log);
         _tray.OpenNotificationsRequested = () => BrowserOpener.Open(UrlGuard.NotificationsUrl, Log);
         _tray.RefreshRequested = () => _ = _poller.RefreshNowAsync();
-        _tray.MarkAllReadRequested = () => _poller.MarkAllRead();
+        _tray.MarkAllReadRequested = MarkAllReadWithUndo;
         _tray.TogglePauseRequested = () => _poller.SetPaused(!_poller.IsPaused);
         _tray.SettingsRequested = ShowSettings;
         _tray.ExitRequested = ExitApp;
@@ -195,7 +234,17 @@ public partial class App : System.Windows.Application
 
         _ticker.SignInRequested = ShowLogin;
         _ticker.RefreshRequested = () => _ = _poller.RefreshNowAsync();
-        _ticker.MarkAllReadRequested = () => _poller.MarkAllRead();
+        _ticker.MarkAllReadRequested = MarkAllReadWithUndo;
+        _ticker.UndoMarkAllReadRequested = undo => _poller.UndoMarkAllRead(undo);
+        _ticker.PinToggleRequested = item => _poller.SetPinned(item.Id, !item.IsPinned);
+        _ticker.OpenAllUnreadRequested = items =>
+        {
+            foreach (var item in items)
+            {
+                _poller.MarkRead(item.Id);
+                BrowserOpener.Open(item.Href, Log);
+            }
+        };
         _ticker.SettingsRequested = ShowSettings;
         _ticker.TogglePauseRequested = () => _poller.SetPaused(!_poller.IsPaused);
         _ticker.ExitRequested = ExitApp;
@@ -217,23 +266,67 @@ public partial class App : System.Windows.Application
         };
     }
 
-    /// <summary>Toast + sound for genuinely new notifications, honoring quiet hours.</summary>
+    /// <summary>
+    /// “Mark all read” from either menu: marks, then offers the exact
+    /// undo in the ticker footer (v0.3.0) — only the ids this call newly
+    /// marked can be restored.
+    /// </summary>
+    private void MarkAllReadWithUndo()
+    {
+        if (_poller is null)
+            return;
+        var undo = _poller.MarkAllRead();
+        if (undo.NewlyMarkedIds.Count > 0)
+            _ticker?.ShowUndoBar(undo);
+    }
+
+    /// <summary>
+    /// Toast + sound for genuinely new notifications. v0.3.0: the Core
+    /// toast decision (pop-ups on, “alert me about” type rules, quiet
+    /// hours) decides first; the shell's Focus Assist / presentation
+    /// state composes on top. The sound follows the same decision.
+    /// </summary>
     private void OnNewItems(IReadOnlyList<NotificationItem> newItems)
     {
-        if (newItems.Count == 0 || !Settings.ShowToasts)
+        if (newItems.Count == 0)
             return;
-        if (QuietHours.IsQuiet(DateTimeOffset.Now, Settings))
+        var now = DateTimeOffset.Now;
+        if (!ToastDecision.ShouldToast(Settings, newItems[0], now))
         {
-            Log.Info($"Suppressed pop-up for {newItems.Count} new notification(s): quiet hours");
+            if (Settings.ShowToasts && QuietHours.IsQuiet(now, Settings))
+                Log.Info($"Suppressed pop-up for {newItems.Count} new notification(s): quiet hours");
             return;
         }
+        if (!FocusAssistAllows())
+            return;
         _toast ??= CreateToast();
         _toast.ShowNotification(newItems[0], newItems.Count - 1);
-        if (Settings.PlaySoundOnToast)
+        PlaySoundIfEnabled();
+    }
+
+    /// <summary>
+    /// The shell notification gate, logged once per state change (state
+    /// names only). Any failure to read the state allows pop-ups.
+    /// </summary>
+    private bool FocusAssistAllows()
+    {
+        var allows = FocusAssistGate.AllowsNotifications(out var stateName);
+        if (stateName != _lastGateState)
         {
-            try { SystemSounds.Asterisk.Play(); }
-            catch { /* sound is decoration; never fail on it */ }
+            _lastGateState = stateName;
+            Log.Info(allows
+                ? $"Windows notification state: {stateName} — pop-ups allowed"
+                : $"Windows notification state: {stateName} — pop-ups suppressed (counting continues)");
         }
+        return allows;
+    }
+
+    private void PlaySoundIfEnabled()
+    {
+        if (!Settings.PlaySoundOnToast)
+            return;
+        try { SystemSounds.Asterisk.Play(); }
+        catch { /* sound is decoration; never fail on it */ }
     }
 
     private ToastWindow CreateToast()
@@ -335,6 +428,8 @@ public partial class App : System.Windows.Application
                      AppPaths.ReadStatePathFor(profileId),
                      AppPaths.CachePathFor(profileId),
                      AppPaths.SnoozePathFor(profileId),
+                     AppPaths.PinPathFor(profileId),
+                     AppPaths.AlertTrackPathFor(profileId),
                  })
         {
             try
@@ -389,14 +484,22 @@ public partial class App : System.Windows.Application
         SettingsStore.Save(AppPaths.SettingsPath, saved);
         ReconcileProfileRemovals(before, saved);
         Log.Info($"Switching profile to {saved.ActiveProfileId}; restarting");
+        RelaunchAndExit();
+    }
 
+    /// <summary>
+    /// Starts a fresh copy of FaceTray and exits this one. The relaunch is
+    /// delayed: the new process must wait for this one to release the
+    /// single-instance mutex (MuseDesktop pattern). Used by profile
+    /// switches and by backup restores (v0.3.0).
+    /// </summary>
+    private void RelaunchAndExit()
+    {
         var exe = Environment.ProcessPath;
         if (!string.IsNullOrEmpty(exe))
         {
             try
             {
-                // Delayed relaunch: the new process must wait for this one
-                // to release the single-instance mutex (MuseDesktop pattern).
                 Process.Start(new ProcessStartInfo(
                     "cmd.exe", $"/c ping -n 3 127.0.0.1 >nul & start \"\" \"{exe}\"")
                 {
@@ -407,10 +510,47 @@ public partial class App : System.Windows.Application
             }
             catch (Exception ex)
             {
-                Log.Error($"Profile-switch relaunch failed: {ex.Message}");
+                Log.Error($"Relaunch failed: {ex.Message}");
             }
         }
         ExitApp();
+    }
+
+    // ---------- backup / restore (v0.3.0) ----------
+
+    private static ProfileFilePaths ProfileFilePathsFor(string profileId) => new(
+        AppPaths.ReadStatePathFor(profileId),
+        AppPaths.SnoozePathFor(profileId),
+        AppPaths.PinPathFor(profileId),
+        AppPaths.CachePathFor(profileId));
+
+    private string ProvideBackupJson()
+    {
+        var json = BackupService.Build(Settings, ProfileFilePathsFor, DateTimeOffset.UtcNow);
+        Log.Info("Backup exported from Settings (settings + local state for every profile; never the Facebook session)");
+        return json;
+    }
+
+    /// <summary>Returns null on success, or the user-facing error text.</summary>
+    private string? TryRestoreBackup(string json)
+    {
+        if (!BackupService.TryParse(json, out var envelope) || envelope is null)
+            return "That file is not a valid FaceTray backup — its format or version was not recognized. Nothing was changed.";
+        try
+        {
+            var restoredSettings = (envelope.Settings ?? new AppSettings()).Sanitized();
+            Settings = restoredSettings;
+            SettingsStore.Save(AppPaths.SettingsPath, restoredSettings);
+            var report = BackupService.Restore(envelope, ProfileFilePathsFor);
+            Log.Info($"Backup restored: {report.ProfilesRestored} profile(s), {report.ReadMarks} read marks, " +
+                     $"{report.Snoozes} snoozes, {report.Pins} pins, {report.CachedItems} cached notifications");
+            return null;
+        }
+        catch (Exception ex)
+        {
+            Log.Error($"Backup restore failed: {ex.GetType().Name}: {ex.Message}");
+            return "The backup could not be restored completely. The log has the details.";
+        }
     }
 
     // ---------- windows ----------
@@ -441,7 +581,8 @@ public partial class App : System.Windows.Application
             return;
         }
         _settingsWindow = new SettingsWindow(
-            Settings, Log, _sessionDir, BuildDiagnosticsState, UpdateStatusText());
+            Settings, Log, _sessionDir, BuildDiagnosticsState, UpdateStatusText(),
+            ProvideBackupJson, TryRestoreBackup);
         _settingsWindow.Saved += saved =>
         {
             var before = Settings;
@@ -451,6 +592,7 @@ public partial class App : System.Windows.Application
             if (_ticker is not null)
                 _ticker.DisplaySettings = saved;
             RefreshTrayProfileLabel();
+            _tray?.SetAccentColor(saved.ActiveProfile.AccentColor);
             SyncHotkey();
         };
         _settingsWindow.SwitchProfileRequested += saved =>
@@ -458,10 +600,18 @@ public partial class App : System.Windows.Application
             _settingsWindow = null;
             SwitchProfile(saved);
         };
+        _settingsWindow.RestoreCompleted += () =>
+        {
+            _settingsWindow = null;
+            Log.Info("Backup restored; restarting to apply it");
+            RelaunchAndExit();
+        };
         _settingsWindow.ClearDataRequested += () =>
         {
             _readStore.Clear();
             _snoozeStore.Clear();
+            _pinStore.Clear();
+            _alertTrackStore.Clear();
             NotificationCacheStore.Clear(_cachePath);
             _poller?.ClearLocalState();
             _tray?.SetUnreadCount(0);
@@ -480,6 +630,9 @@ public partial class App : System.Windows.Application
         LastPollRows = _poller?.LastPoll?.Rows ?? 0,
         LastPollUnread = _poller?.LastPoll?.Unread ?? 0,
         ExtractionHealth = _poller?.LastPoll?.Health ?? ExtractionHealthState.Healthy,
+        LastStrategy = _poller?.LastStrategy ?? 0,
+        StrategyCounts = _poller?.StrategyCounts ?? new Dictionary<int, int>(),
+        SessionStateName = _poller?.SessionState.ToString() ?? "",
         PollIntervalSeconds = Settings.PollIntervalSeconds,
         CachedItemCount = _poller?.Items.Count ?? 0,
         UnreadCount = _poller?.UnreadCount ?? 0,
@@ -516,7 +669,7 @@ public partial class App : System.Windows.Application
         TickerWindow ticker;
         try
         {
-            poller = new PollerService(Settings, Log, _readStore, _snoozeStore, _cachePath, _sessionDir, Dispatcher);
+            poller = new PollerService(Settings, Log, _readStore, _snoozeStore, _pinStore, _alertTrackStore, _cachePath, _sessionDir, Dispatcher);
             ticker = new TickerWindow(poller, Log) { DisplaySettings = Settings };
             ticker.ShowTicker();
         }

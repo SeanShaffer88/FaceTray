@@ -91,6 +91,24 @@ public sealed class SnoozeStore
             return _until.TryGetValue(id, out var until) ? until : null;
     }
 
+    /// <summary>Copy of the whole map (backup/restore).</summary>
+    public IReadOnlyDictionary<string, DateTimeOffset> Snapshot()
+    {
+        lock (_gate) return new Dictionary<string, DateTimeOffset>(_until);
+    }
+
+    /// <summary>Replaces the whole map (backup/restore).</summary>
+    public void ReplaceAll(IReadOnlyDictionary<string, DateTimeOffset> snoozes)
+    {
+        lock (_gate)
+        {
+            _until.Clear();
+            foreach (var (id, until) in snoozes)
+                if (!string.IsNullOrWhiteSpace(id))
+                    _until[id] = until.ToUniversalTime();
+        }
+    }
+
     /// <summary>Drops entries whose snooze has expired. Returns how many were removed.</summary>
     public int PruneExpired(DateTimeOffset nowUtc)
     {

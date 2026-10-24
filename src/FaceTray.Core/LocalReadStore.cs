@@ -115,14 +115,61 @@ public sealed class LocalReadStore
         }
     }
 
-    public void MarkAllRead(IEnumerable<string> ids, DateTimeOffset? nowUtc = null)
+    /// <summary>
+    /// Marks every id read. Returns the ids that were NEWLY marked (the
+    /// ones an undo of “Mark all read” may legitimately restore — ids
+    /// already marked before the call are untouched by this).
+    /// </summary>
+    public IReadOnlyList<string> MarkAllRead(IEnumerable<string> ids, DateTimeOffset? nowUtc = null)
     {
         var stamp = (nowUtc ?? DateTimeOffset.UtcNow).ToUniversalTime();
         lock (_gate)
         {
+            var newly = new List<string>();
             foreach (var id in ids)
+            {
                 if (!string.IsNullOrWhiteSpace(id) && !_marks.ContainsKey(id))
+                {
                     _marks[id] = stamp;
+                    newly.Add(id);
+                }
+            }
+            TrimLocked();
+            return newly;
+        }
+    }
+
+    /// <summary>
+    /// Removes read marks (the “Mark all read” undo). Unknown ids are
+    /// ignored. Returns how many marks were actually removed.
+    /// </summary>
+    public int Unmark(IEnumerable<string> ids)
+    {
+        lock (_gate)
+        {
+            var removed = 0;
+            foreach (var id in ids)
+                if (!string.IsNullOrWhiteSpace(id) && _marks.Remove(id))
+                    removed++;
+            return removed;
+        }
+    }
+
+    /// <summary>Copy of the whole map, id → marked time (null for legacy marks). Backup/restore.</summary>
+    public IReadOnlyDictionary<string, DateTimeOffset?> Snapshot()
+    {
+        lock (_gate) return new Dictionary<string, DateTimeOffset?>(_marks);
+    }
+
+    /// <summary>Replaces the whole map (backup/restore). Insertion follows the given order; the cap still applies.</summary>
+    public void ReplaceAll(IReadOnlyDictionary<string, DateTimeOffset?> marks)
+    {
+        lock (_gate)
+        {
+            _marks.Clear();
+            foreach (var (id, markedUtc) in marks)
+                if (!string.IsNullOrWhiteSpace(id))
+                    _marks[id] = markedUtc?.ToUniversalTime();
             TrimLocked();
         }
     }
@@ -216,6 +263,20 @@ public static class NotificationCacheStore
         AtomicJson.Write(path, JsonSerializer.Serialize(file, AtomicJson.IndentedOptions));
     }
 
+    /// <summary>Saves entries with their own saved times (backup/restore keeps each entry's age).</summary>
+    public static void SaveEntries(string path, IReadOnlyList<CachedNotification> entries)
+    {
+        var file = new CacheFile
+        {
+            Version = 2,
+            Items = entries
+                .Take(MaxCachedItems)
+                .Select(e => new CacheEntry { Item = e.Item, SavedUtc = e.SavedUtc.ToUniversalTime() })
+                .ToList(),
+        };
+        AtomicJson.Write(path, JsonSerializer.Serialize(file, AtomicJson.IndentedOptions));
+    }
+
     /// <summary>
     /// Merges a fresh poll into the existing list: fresh items first (in
     /// page order), then older items the page no longer shows, deduped by
@@ -287,13 +348,16 @@ public static class NotificationCacheStore
     /// duplicated-time text healed, local read + snooze state applied,
     /// entries older than <paramref name="keepDays"/> days pruned
     /// (0 = keep everything), capped at <see cref="MaxCachedItems"/>.
+    /// Pinned entries (v0.3.0) are EXEMPT from the age prune and are
+    /// flagged <see cref="NotificationItem.IsPinned"/> for the ticker.
     /// </summary>
     public static IReadOnlyList<NotificationItem> Load(
         string path,
         IReadOnlySet<string>? locallyReadIds,
         IReadOnlySet<string>? snoozedIds = null,
         int keepDays = 0,
-        DateTimeOffset? nowUtc = null)
+        DateTimeOffset? nowUtc = null,
+        IReadOnlySet<string>? pinnedIds = null)
     {
         var entries = LoadEntries(path);
         var cutoff = keepDays > 0
@@ -302,7 +366,8 @@ public static class NotificationCacheStore
         var valid = new List<NotificationItem>();
         foreach (var entry in entries)
         {
-            if (entry.SavedUtc < cutoff)
+            var pinned = pinnedIds is not null && pinnedIds.Contains(entry.Item.Id);
+            if (entry.SavedUtc < cutoff && !pinned)
                 continue;
             var item = entry.Item;
             if (string.IsNullOrWhiteSpace(item.Id)
@@ -317,6 +382,7 @@ public static class NotificationCacheStore
                 item.IsUnread = false;
             if (snoozedIds is not null && snoozedIds.Contains(item.Id))
                 item.IsUnread = false;
+            item.IsPinned = pinned;
             valid.Add(item);
             if (valid.Count >= MaxCachedItems)
                 break;

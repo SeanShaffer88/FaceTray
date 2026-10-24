@@ -39,6 +39,23 @@ public sealed class NotificationItem
 
     public NotificationType Type { get; set; } = NotificationType.Other;
 
+    /// <summary>
+    /// When the notification happened, when Facebook's page exposed a
+    /// machine-readable time for the row (a <c>&lt;time datetime&gt;</c> or
+    /// an <c>&lt;abbr title&gt;</c> — v0.3.0). Best-effort: many rows carry
+    /// nothing but the relative label, so this is often null. Powers the
+    /// ticker's exact-time tooltip.
+    /// </summary>
+    public DateTimeOffset? TimestampUtc { get; set; }
+
+    /// <summary>
+    /// Local pin state, applied by the parser / cache / poller from the
+    /// PinStore. Display-only: it lives in the pin file, never in the
+    /// cache, so it is excluded from serialization.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool IsPinned { get; set; }
+
     /// <summary>Avatar image URLs, first is the primary avatar. Multi-avatar rows carry several.</summary>
     public List<string> AvatarUrls { get; set; } = new();
 

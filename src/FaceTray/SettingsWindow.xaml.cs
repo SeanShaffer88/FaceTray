@@ -2,6 +2,8 @@ using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
+using System.Windows.Shapes;
 using FaceTray.Core;
 using Microsoft.Win32;
 using Clipboard = System.Windows.Clipboard;
@@ -27,6 +29,9 @@ public partial class SettingsWindow : Window
     private AppSettings _editing;
     private readonly DiagnosticLog _log;
     private readonly Func<DiagnosticsState>? _diagnosticsProvider;
+    private readonly Func<string>? _backupProvider;
+    private readonly Func<string, string?>? _restoreHandler;
+    private bool _refreshingAccent;
 
     /// <summary>Raised with the saved settings after a successful Save.</summary>
     public event Action<AppSettings>? Saved;
@@ -41,23 +46,91 @@ public partial class SettingsWindow : Window
     /// </summary>
     public event Action<AppSettings>? SwitchProfileRequested;
 
+    /// <summary>
+    /// Raised after a backup was restored (v0.3.0): App restarts so the
+    /// restored settings and stores take effect cleanly.
+    /// </summary>
+    public event Action? RestoreCompleted;
+
     public SettingsWindow(
         AppSettings current,
         DiagnosticLog log,
         string sessionFolder,
         Func<DiagnosticsState>? diagnosticsProvider = null,
-        string? updateStatusText = null)
+        string? updateStatusText = null,
+        Func<string>? backupProvider = null,
+        Func<string, string?>? restoreHandler = null)
     {
         _editing = current.Clone();
         _log = log;
         _diagnosticsProvider = diagnosticsProvider;
+        _backupProvider = backupProvider;
+        _restoreHandler = restoreHandler;
         InitializeComponent();
 
         ProfilePathText.Text = $"Facebook session folder (active account): {sessionFolder}";
         UpdateStatusText.Text = updateStatusText ?? "";
-        ProfilesList.SelectionChanged += (_, _) => UpdateProfileButtons();
+        BuildAccentBox();
+        AccentBox.SelectionChanged += OnAccentChanged;
+        ProfilesList.SelectionChanged += (_, _) =>
+        {
+            UpdateProfileButtons();
+            RefreshAccentBox();
+        };
         RefreshControls();
         RefreshDiagnostics();
+    }
+
+    /// <summary>Builds the bubble-colour picker items from the Core palette (name + swatch dot).</summary>
+    private void BuildAccentBox()
+    {
+        foreach (var (name, hex) in AccentPalette.Colors)
+        {
+            var panel = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal };
+            panel.Children.Add(new Ellipse
+            {
+                Width = 12,
+                Height = 12,
+                VerticalAlignment = VerticalAlignment.Center,
+                Fill = new SolidColorBrush(
+                    (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(hex)),
+            });
+            panel.Children.Add(new TextBlock { Text = "  " + name, VerticalAlignment = VerticalAlignment.Center });
+            AccentBox.Items.Add(new ComboBoxItem { Content = panel, Tag = hex });
+        }
+    }
+
+    private void RefreshAccentBox()
+    {
+        var selected = SelectedProfile;
+        AccentBox.IsEnabled = selected is not null;
+        if (selected is null)
+            return;
+        _refreshingAccent = true;
+        try
+        {
+            foreach (ComboBoxItem item in AccentBox.Items)
+            {
+                if (item.Tag?.ToString() == selected.AccentColor)
+                {
+                    AccentBox.SelectedItem = item;
+                    break;
+                }
+            }
+        }
+        finally
+        {
+            _refreshingAccent = false;
+        }
+    }
+
+    private void OnAccentChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_refreshingAccent)
+            return;
+        var selected = SelectedProfile;
+        if (selected is not null && AccentBox.SelectedItem is ComboBoxItem item && item.Tag is string hex)
+            selected.AccentColor = hex;
     }
 
     // ---------- control <-> settings mapping ----------
@@ -79,6 +152,14 @@ public partial class SettingsWindow : Window
         ShowLikesBox.IsChecked = !hidden.Contains(NotificationTypeGroups.Key(NotificationTypeGroup.LikesAndReactions));
         ShowBirthdaysBox.IsChecked = !hidden.Contains(NotificationTypeGroups.Key(NotificationTypeGroup.Birthdays));
         ShowOtherBox.IsChecked = !hidden.Contains(NotificationTypeGroups.Key(NotificationTypeGroup.Other));
+
+        var alerts = _editing.AlertTypeGroups.ToHashSet();
+        AlertCommentsMentionsBox.IsChecked = alerts.Contains(NotificationTypeGroups.Key(NotificationTypeGroup.CommentsAndMentions));
+        AlertLikesBox.IsChecked = alerts.Contains(NotificationTypeGroups.Key(NotificationTypeGroup.LikesAndReactions));
+        AlertBirthdaysBox.IsChecked = alerts.Contains(NotificationTypeGroups.Key(NotificationTypeGroup.Birthdays));
+        AlertOtherBox.IsChecked = alerts.Contains(NotificationTypeGroups.Key(NotificationTypeGroup.Other));
+        DigestBox.IsChecked = _editing.DigestEnabled;
+        DigestTimeBox.Text = _editing.DigestTime;
 
         SelectComboByTag(ThemeBox, _editing.TickerTheme);
         SelectComboByTag(TextScaleBox, _editing.TickerTextScalePercent.ToString());
@@ -135,6 +216,26 @@ public partial class SettingsWindow : Window
             hidden.Add(NotificationTypeGroups.Key(NotificationTypeGroup.Other));
         _editing.HiddenTypeGroups = hidden;
 
+        var alerts = new List<string>();
+        if (AlertCommentsMentionsBox.IsChecked == true)
+            alerts.Add(NotificationTypeGroups.Key(NotificationTypeGroup.CommentsAndMentions));
+        if (AlertLikesBox.IsChecked == true)
+            alerts.Add(NotificationTypeGroups.Key(NotificationTypeGroup.LikesAndReactions));
+        if (AlertBirthdaysBox.IsChecked == true)
+            alerts.Add(NotificationTypeGroups.Key(NotificationTypeGroup.Birthdays));
+        if (AlertOtherBox.IsChecked == true)
+            alerts.Add(NotificationTypeGroups.Key(NotificationTypeGroup.Other));
+        _editing.AlertTypeGroups = alerts;
+
+        _editing.DigestEnabled = DigestBox.IsChecked == true;
+        if (!TimeOfDayText.TryParse(DigestTimeBox.Text, out var digestTime))
+        {
+            MessageBox.Show("The morning digest time needs a 24-hour time like 08:00.",
+                "FaceTray", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
+        }
+        _editing.DigestTime = TimeOfDayText.Format(digestTime);
+
         if (ThemeBox.SelectedItem is ComboBoxItem theme)
             _editing.TickerTheme = theme.Tag?.ToString() ?? TickerThemes.FacebookDark;
         if (TextScaleBox.SelectedItem is ComboBoxItem scale
@@ -179,6 +280,7 @@ public partial class SettingsWindow : Window
                 ProfilesList.SelectedItem = entry;
         }
         UpdateProfileButtons();
+        RefreshAccentBox();
     }
 
     private ProfileInfo? SelectedProfile =>
@@ -364,13 +466,83 @@ public partial class SettingsWindow : Window
     private void OnClearData(object sender, RoutedEventArgs e)
     {
         var answer = MessageBox.Show(
-            "Clear the active account's local data?\n\nThis removes its cached notifications, local read marks " +
-            "and snoozes. It does not sign the account out of Facebook (see the note above for that).",
+            "Clear the active account's local data?\n\nThis removes its cached notifications, local read marks, " +
+            "snoozes and pins. It does not sign the account out of Facebook (see the note above for that).",
             "FaceTray", MessageBoxButton.OKCancel, MessageBoxImage.Question);
         if (answer != MessageBoxResult.OK)
             return;
         ClearDataRequested?.Invoke();
         _log.Info("Local data cleared from Settings");
         MessageBox.Show("Local data cleared.", "FaceTray", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    // ---------- backup / restore (v0.3.0) ----------
+
+    private void OnBackup(object sender, RoutedEventArgs e)
+    {
+        if (_backupProvider is null)
+            return;
+        var dialog = new SaveFileDialog
+        {
+            Title = "Back up FaceTray",
+            Filter = "FaceTray backup (*.json)|*.json",
+            FileName = "facetray-backup.json",
+        };
+        if (dialog.ShowDialog(this) != true)
+            return;
+        try
+        {
+            File.WriteAllText(dialog.FileName, _backupProvider());
+            _log.Info("Backup written from Settings");
+            MessageBox.Show("Backup saved. It contains your settings and local read/snooze/pin state — " +
+                            "never your Facebook sign-in.",
+                "FaceTray", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Couldn't write the backup: {ex.Message}",
+                "FaceTray", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private void OnRestoreBackup(object sender, RoutedEventArgs e)
+    {
+        if (_restoreHandler is null)
+            return;
+        var dialog = new OpenFileDialog
+        {
+            Title = "Restore a FaceTray backup",
+            Filter = "FaceTray backup (*.json)|*.json",
+        };
+        if (dialog.ShowDialog(this) != true)
+            return;
+        string json;
+        try
+        {
+            json = File.ReadAllText(dialog.FileName);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Couldn't read that file: {ex.Message}",
+                "FaceTray", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        var confirm = MessageBox.Show(
+            "Restore this backup?\n\nIt replaces FaceTray's settings and the local state (read marks, " +
+            "snoozes, pins, cached notifications) for every account in the backup. Your Facebook sign-ins " +
+            "are never part of a backup and are not touched. FaceTray restarts to apply the restore.",
+            "FaceTray", MessageBoxButton.OKCancel, MessageBoxImage.Question);
+        if (confirm != MessageBoxResult.OK)
+            return;
+        var error = _restoreHandler(json);
+        if (error is not null)
+        {
+            MessageBox.Show(error, "FaceTray", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        MessageBox.Show("Backup restored. FaceTray will restart to apply it.",
+            "FaceTray", MessageBoxButton.OK, MessageBoxImage.Information);
+        RestoreCompleted?.Invoke();
+        Close();
     }
 }

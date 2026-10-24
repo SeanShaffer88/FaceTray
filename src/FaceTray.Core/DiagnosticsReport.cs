@@ -21,6 +21,18 @@ public sealed class DiagnosticsState
     public int LastPollRows { get; init; }
     public int LastPollUnread { get; init; }
     public ExtractionHealthState ExtractionHealth { get; init; } = ExtractionHealthState.Healthy;
+
+    /// <summary>
+    /// Which extraction strategy the last poll used (v0.3.0): 1 primary,
+    /// 2 permalink fallback, 3 row fallback; 0 before any poll.
+    /// </summary>
+    public int LastStrategy { get; init; }
+
+    /// <summary>How often each strategy produced the list this session (counts only).</summary>
+    public IReadOnlyDictionary<int, int> StrategyCounts { get; init; } = new Dictionary<int, int>();
+
+    /// <summary>The session state the last poll found (name only).</summary>
+    public string SessionStateName { get; init; } = "";
     public int PollIntervalSeconds { get; init; }
     public int CachedItemCount { get; init; }
     public int UnreadCount { get; init; }
@@ -42,10 +54,30 @@ public static class DiagnosticsReport
             ? $"Last poll: {lastPoll.UtcDateTime:yyyy-MM-dd HH:mm:ss} UTC — {state.LastPollRows} rows, {state.LastPollUnread} unread"
             : "Last poll: never");
         sb.AppendLine($"Extraction health: {state.ExtractionHealth}");
+        if (state.LastStrategy > 0)
+        {
+            sb.AppendLine($"Extraction: {StrategyLabel(state.LastStrategy)} · last poll");
+            sb.AppendLine(
+                $"Strategies this session: primary {CountOf(state, 1)}, permalink fallback {CountOf(state, 2)}, row fallback {CountOf(state, 3)}");
+        }
+        if (!string.IsNullOrEmpty(state.SessionStateName))
+            sb.AppendLine($"Session: {state.SessionStateName}");
         sb.AppendLine($"Unread counter: {state.UnreadCount}");
         sb.AppendLine($"Cached notifications: {state.CachedItemCount}");
         sb.AppendLine($"Poll interval (configured): {state.PollIntervalSeconds}s");
         sb.AppendLine($"Session folder: {state.SessionFolder}");
         return sb.ToString();
     }
+
+    /// <summary>Human name for a strategy number, as shown in Settings → Diagnostics.</summary>
+    public static string StrategyLabel(int strategy) => strategy switch
+    {
+        1 => "strategy 1 (primary)",
+        2 => "strategy 2 (permalink fallback)",
+        3 => "strategy 3 (row fallback)",
+        _ => $"strategy {strategy}",
+    };
+
+    private static int CountOf(DiagnosticsState state, int strategy) =>
+        state.StrategyCounts.TryGetValue(strategy, out var count) ? count : 0;
 }

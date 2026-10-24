@@ -46,6 +46,31 @@ Polish & accessibility:
 - [ ] Ticker themes: Light looks right (readable rows, badges/dots still coloured); Follow Windows follows a Windows light/dark switch and uses system colours under High Contrast mode.
 - [ ] Text size: 150% enlarges ticker text and panel without clipped rows; 100% restores the original size; the setting applies on Save without a restart.
 
+## v0.3.0 verification (same on-machine pass as v0.2.0 — nothing below is proven yet)
+Reading & triage:
+- [ ] Pins: pinning a row (hover 📌, right-click, or `p`) puts it in a Pinned section above Today; unpinning returns it to its section; a pinned old notification survives the history prune and a restart.
+- [ ] Undo mark-all-read: “Mark all read” (tray menu or ticker menu) shows the Undo bar in the ticker footer; Undo restores exactly the items that were unread before, and the counter returns; after ~6 seconds the bar is gone and undo is no longer offered.
+- [ ] Row context menu: Open in browser / Copy link (paste it elsewhere to check) / Mark as read / Snooze 1 hour / Snooze until tomorrow / Pin or Unpin all work.
+- [ ] Power keys: with the ticker open and the search box NOT focused, j/k move between rows, Enter opens, m marks read, s snoozes 1 hour, p pins/unpins, x expands a folded group, Esc closes; typing those letters in the search box just types.
+- [ ] Exact-time tooltips: rows carrying an exact time show a “Wed 21 Oct 2026, 16:32 (3h ago)”-style tooltip; rows without one show just the relative label.
+- [ ] Open all unread: with ≤5 unread it opens them all in the browser and marks them read; with more it asks first, and the confirmation says it ignores the ticker's search/filters.
+- [ ] Collapse repeats: several notifications about the same post fold into one row with a ×N chip; clicking the chip (or pressing x) expands the folded rows inline; pinned rows never fold.
+Alerts:
+- [ ] Per-type alert rules: unticking “Likes and reactions” under “Alert me about” stops like pop-ups (ticker and counter still update); re-ticking restores them; the sound follows the same rule.
+- [ ] Focus Assist: with Windows Focus Assist on (or a fullscreen game / presentation running), a new notification raises NO pop-up and NO sound but the counter rises; turning Focus Assist off lets the next pop-up through; the log names the shell state once per change.
+- [ ] One gentle re-alert: a comment/mention left unread for 30 minutes pops up exactly once more; after that, never again for that notification.
+- [ ] Morning digest: with the digest on, at/after the chosen time exactly one digest pop-up appears (“N new since your last digest — newest: …”) on a day things arrived, and not again that day; quiet days produce nothing.
+- [ ] Per-account bubble colour: give the second account a blue bubble in Settings; while that account is active the tray bubble is blue; the first account keeps its own colour.
+Robustness:
+- [ ] Fallback strategies: Settings → Diagnostics shows “strategy 1 (primary)” after normal polls; a fallback number there means Facebook changed something (note it — the list should still be right).
+- [ ] Session states: if Facebook shows a “confirm it's you” checkpoint, the ticker shows the checkpoint banner/panel (NOT the sign-in state); confirming in the sign-in window resumes polling. A genuine sign-out still shows the sign-in state.
+- [ ] Renderer self-healing: (hard to force on demand — watch the log if the embedded view ever crashes) FaceTray rebuilds it and polling resumes with the sign-in intact; after three failed recreations it stops and says so.
+- [ ] Staleness line: the footer reads “Updated just now” right after a poll; offline it ages to “Last updated N min ago — showing saved notifications”.
+Data & platform:
+- [ ] Backup/restore: Back up everything…, then change settings and read marks, then Restore backup… — after the restart, state matches the backup; a non-backup file is rejected with a message and changes nothing; sign-ins survive either way and are never in the file.
+- [ ] Portable mode: a fresh ZIP copy plus an empty `portable.txt` beside FaceTray.exe → data lands in `FaceTray-data` beside it (nothing new in %APPDATA%\FaceTray), the sign-in persists across runs from a different folder; deleting portable.txt returns to the AppData data.
+- [ ] ARM64: on an ARM64 Windows machine the win-arm64 build installs and runs natively; CI's build-arm64 job is green.
+
 ## Install & first run
 - [x] Run `FaceTray.exe` — no error, ticker opens showing the sign-in state (2026-10-23 captures; which build route he launched was not recorded).
 - [x] Installer installs per-user without admin (v0.1.1 installer confirmed by SEAN 2026-10-23).
