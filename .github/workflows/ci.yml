@@ -49,3 +49,45 @@ jobs:
           name: FaceTray-win-x64
           path: publish/win-x64
           if-no-files-found: error
+
+    # v0.3.0: the same gate on ARM64 Windows (windows-11-arm runners), so
+    # Snapdragon / ARM64 machines get a native build instead of emulation.
+    build-arm64:
+      runs-on: windows-11-arm
+      steps:
+        - uses: actions/checkout@v5
+
+        - name: Set up .NET 10
+          uses: actions/setup-dotnet@v5
+          with:
+            dotnet-version: '10.0.x'
+
+        - name: Restore
+          run: dotnet restore FaceTray.sln
+
+        - name: Build (Release)
+          run: dotnet build FaceTray.sln -c Release --no-restore
+
+        - name: Test (core logic)
+          run: dotnet test tests/FaceTray.Core.Tests -c Release --no-build
+
+        - name: Publish (win-arm64, self-contained)
+          run: dotnet publish src/FaceTray/FaceTray.csproj -c Release -r win-arm64 --self-contained true -o publish/win-arm64
+
+        - name: Stage release folder
+          shell: pwsh
+          run: |
+            Copy-Item README.md, LICENSE, KNOWN_LIMITATIONS.md, RELEASE_CHECKLIST.md publish/win-arm64/
+
+        - name: Smoke test (window construction + WebView2 init)
+          shell: pwsh
+          run: |
+            $p = Start-Process -FilePath "publish/win-arm64/FaceTray.exe" -ArgumentList "--smoke-test" -Wait -PassThru
+            if ($p.ExitCode -ne 0) { throw "Smoke test failed with exit code $($p.ExitCode)" }
+
+        - name: Upload artifact
+          uses: actions/upload-artifact@v6
+          with:
+            name: FaceTray-win-arm64
+            path: publish/win-arm64
+            if-no-files-found: error
